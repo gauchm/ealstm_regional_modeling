@@ -251,7 +251,7 @@ def load_forcing(camels_root: PosixPath, basin: str) -> Tuple[pd.DataFrame, int]
     RuntimeError
         If not forcing file was found.
     """
-    forcing_path = camels_root / 'basin_mean_forcing' / 'maurer_extended'
+    forcing_path = camels_root / 'basin_dataset_public_v1p2' / 'basin_mean_forcing' / 'maurer_extended'
     files = list(forcing_path.glob('**/*_forcing_leap.txt'))
     file_path = [f for f in files if f.name[:8] == basin]
     if len(file_path) == 0:
@@ -293,7 +293,7 @@ def load_discharge(camels_root: PosixPath, basin: str, area: int) -> pd.Series:
     RuntimeError
         If no discharge file was found.
     """
-    discharge_path = camels_root / 'usgs_streamflow'
+    discharge_path = camels_root / 'basin_dataset_public_v1p2' / 'usgs_streamflow'
     files = list(discharge_path.glob('**/*_streamflow_qc.txt'))
     file_path = [f for f in files if f.name[:8] == basin]
     if len(file_path) == 0:
