@@ -51,6 +51,13 @@ def get_shape_collections(data: Dict):
 
 
 model_draw_style = {
+    'xgboost_MSE': {
+        'ensemble_color': '#ffd300',
+        'single_color': '#ffd300',
+        'linestyle': '--',
+        'marker': 's',
+        'label': 'XGBoost MSE'
+    },
     'ealstm_NSE': {
         'ensemble_color': '#1b9e77',
         'single_color': '#b3e2cd',
@@ -156,6 +163,10 @@ model_draw_style = {
 }
 
 model_specs = {
+    'xgboost_MSE': {
+        'model': 'xgboost',
+        'loss': 'MSELoss'
+    },
     'ealstm_MSE': {
         'model': 'ealstm',
         'loss': 'MSELoss'

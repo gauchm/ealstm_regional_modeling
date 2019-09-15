@@ -47,7 +47,7 @@ def get_run_dirs(root_dir: PosixPath, model: str, loss: str) -> List:
     RuntimeError
         If root directory contains no subfolder.
     """
-    valid_models = ["ealstm", "lstm", "lstm_no_static"]
+    valid_models = ["xgboost", "ealstm", "lstm", "lstm_no_static"]
     if not model in valid_models:
         raise ValueError(f"`model` must be one of {valid_models}")
 
@@ -65,30 +65,39 @@ def get_run_dirs(root_dir: PosixPath, model: str, loss: str) -> List:
         if folder.is_dir():
             with open(folder / "cfg.json", "r") as fp:
                 cfg = json.load(fp)
+            
+            if (folder.name.split('_')[1] != 'xgb'):
+                if (model == "ealstm") and (not cfg["concat_static"]) and (not cfg["no_static"]):
+                    if (loss == "NSELoss") and (not cfg["use_mse"]):
+                        run_dirs.append(folder)
+                    elif (loss == "MSELoss") and (cfg["use_mse"]):
+                        run_dirs.append(folder)
+                    else:
+                        pass
 
-            if (model == "ealstm") and (not cfg["concat_static"]) and (not cfg["no_static"]):
-                if (loss == "NSELoss") and (not cfg["use_mse"]):
-                    run_dirs.append(folder)
-                elif (loss == "MSELoss") and (cfg["use_mse"]):
-                    run_dirs.append(folder)
-                else:
-                    pass
+                if (model == "lstm") and (cfg["concat_static"]) and (not cfg["no_static"]):
+                    if (loss == "NSELoss") and (not cfg["use_mse"]):
+                        run_dirs.append(folder)
+                    elif (loss == "MSELoss") and (cfg["use_mse"]):
+                        run_dirs.append(folder)
+                    else:
+                        pass
 
-            if (model == "lstm") and (cfg["concat_static"]) and (not cfg["no_static"]):
-                if (loss == "NSELoss") and (not cfg["use_mse"]):
-                    run_dirs.append(folder)
-                elif (loss == "MSELoss") and (cfg["use_mse"]):
-                    run_dirs.append(folder)
-                else:
-                    pass
-
-            if (model == "lstm_no_static") and (cfg["no_static"]):
-                if (loss == "NSELoss") and (not cfg["use_mse"]):
-                    run_dirs.append(folder)
-                elif (loss == "MSELoss") and (cfg["use_mse"]):
-                    run_dirs.append(folder)
-                else:
-                    pass
+                if (model == "lstm_no_static") and (cfg["no_static"]):
+                    if (loss == "NSELoss") and (not cfg["use_mse"]):
+                        run_dirs.append(folder)
+                    elif (loss == "MSELoss") and (cfg["use_mse"]):
+                        run_dirs.append(folder)
+                    else:
+                        pass
+            else:
+                if (model == "xgboost"):
+                    if (loss == "MSELoss") and (cfg["use_mse"]):
+                        run_dirs.append(folder)
+                    elif (loss == "NSELoss") and (not cfg["use_mse"]):
+                        run_dirs.append(folder)
+                    else:
+                        pass
 
     return run_dirs
 
@@ -127,8 +136,8 @@ def eval_benchmark_models(netcdf_folder: PosixPath, func: Callable) -> dict:
     return benchmark_models
 
 
-def eval_lstm_models(run_dirs: List, func: Callable) -> dict:
-    """Evaluate LSTM outputs on specific metric function.
+def eval_datadriven_models(run_dirs: List, func: Callable) -> dict:
+    """Evaluate data-driven (LSTM, XGBoost) outputs on specific metric function.
 
     Returns the metric for each basin in each seed, as well as the results of the ensemble mean.
     
