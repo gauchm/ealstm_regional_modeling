@@ -14,10 +14,12 @@ from pathlib import Path, PosixPath
 from typing import Dict, List, Tuple
 
 import numpy as np
+import scipy as sp
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 import xgboost as xgb
+from sklearn import model_selection
 from tqdm import tqdm
 
 from papercode.datasets import CamelsH5, CamelsTXT
@@ -34,32 +36,33 @@ from papercode.utils import create_h5_files, get_basin_list
 # fixed settings for all experiments
 GLOBAL_SETTINGS = {
     # XGBoost parameters
-    'learning_rate': 0.1,
-    'n_estimators': 500,
-    'colsample_bylevel': 0.9,
-    'colsample_bytree': 0.9,
-    'subsample': 0.8,
-    'gamma': 3,
-    'max_depth': 5,
-    'min_child_weight': 4,
-    'reg_alpha': 20,
-    'reg_lambda': 0.5,
-    'early_stopping_rounds': 100,
+    #'learning_rate': 0.1,
+    'n_estimators': 100,
+    #'colsample_bylevel': 0.9,
+    #'colsample_bytree': 0.9,
+    #'subsample': 0.8,
+    #'gamma': 3,
+    #'max_depth': 5,
+    #'min_child_weight': 4,
+    #'reg_alpha': 20,
+    #'reg_lambda': 0.5,
+    'early_stopping_rounds': 40,
+    'objective': 'reg:squarederror',
     
     # parameters for RandomSearchCV:
     'param_dist': {
-        #'learning_rate': sp.stats.uniform(0.005, 0.1),
-        #'gamma': sp.stats.uniform(0, 5),
-        #'max_depth': sp.stats.randint(2, 8),
-        #'min_child_weight': sp.stats.randint(1, 30),
-        #'subsample': sp.stats.uniform(0.5, 0.5),
-        #'colsample_bytree': sp.stats.uniform(0.3, 0.7),
-        #'colsample_bylevel': sp.stats.uniform(0.3, 0.7),
+        'learning_rate': [0.25],
+        'gamma': sp.stats.uniform(0, 5),
+        'max_depth': sp.stats.randint(2, 8),
+        'min_child_weight': sp.stats.randint(1, 15),
+        'subsample': [0.5],
+        'colsample_bytree': sp.stats.uniform(0.3, 0.7),
+        'colsample_bylevel': sp.stats.uniform(0.3, 0.7),
         #'reg_alpha': sp.stats.expon(0, 20),
         #'reg_lambda': sp.stats.expon(0, 20),
     },
-    'n_iter': None,
-    'n_cv': None,
+    'n_iter': 10000,
+    'n_cv': 2,
     
     'seq_length': 8,
     'train_start': pd.to_datetime('01101999', format='%d%m%Y'),
@@ -159,6 +162,14 @@ def _setup_run(cfg: Dict) -> Dict:
                 temp_cfg[key] = str(val)
             elif isinstance(val, pd.Timestamp):
                 temp_cfg[key] = val.strftime(format="%d%m%Y")
+            elif key == 'param_dist':
+                temp_dict = {}
+                for k, v in val.items():
+                    if isinstance(v, sp.stats._distn_infrastructure.rv_frozen):
+                        temp_dict[k] = f"{v.dist.name}{v.args}, *kwds={v.kwds}"
+                    else:
+                        temp_dict[k] = str(v)
+                temp_cfg[key] = str(temp_dict)
             else:
                 temp_cfg[key] = val
         json.dump(temp_cfg, fp, sort_keys=True, indent=4)
@@ -253,22 +264,29 @@ def train(cfg):
 
     param_search = len(cfg['param_dist'].keys()) > 0
     if param_search:
-        model = xgb.XGBRegressor(n_estimators=cfg["n_estimators"], n_jobs=cfg["num_workers"], random_state=cfg["seed"])
+        if (cfg["n_iter"] * cfg["n_cv"] >= cfg["num_workers"]) or (cfg["num_workers"] == -1):
+            n_jobs_xgb = 1 
+            n_jobs_cv = cfg["num_workers"]
+        else:
+            n_jobs_xgb = 2
+            n_jobs_cv = cfg["num_workers"] // 2
+        model = xgb.XGBRegressor(n_estimators=cfg["n_estimators"], objective=cfg["objective"], n_jobs=n_jobs_xgb, random_state=cfg["seed"])
         model = model_selection.RandomizedSearchCV(model, cfg["param_dist"], n_iter=cfg["n_iter"], cv=cfg["n_cv"], return_train_score=True, 
-                                                   scoring='neg_mean_squared_error', n_jobs=cfg["num_workers"], random_state=cfg["seed"], verbose=5)
+                                                   scoring='neg_mean_squared_error', n_jobs=n_jobs_cv, random_state=cfg["seed"], verbose=5)
     else:
         model = xgb.XGBRegressor(n_estimators=cfg["n_estimators"], learning_rate=cfg["learning_rate"], reg_alpha=cfg["reg_alpha"], reg_lambda=cfg["reg_lambda"],
                                  subsample=cfg["subsample"], colsample_bylevel=cfg["colsample_bylevel"], colsample_bytree=cfg["colsample_bytree"], 
                                  gamma=cfg["gamma"], max_depth=cfg["max_depth"], min_child_weight=cfg["min_child_weight"], 
                                  n_jobs=cfg["num_workers"], random_state=cfg["seed"])
         
-    model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric='rmse', early_stopping_rounds=cfg["early_stopping_rounds"], verbose=not param_search)
+    model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric='rmse', 
+              early_stopping_rounds=cfg["early_stopping_rounds"], verbose=not param_search)
     
     if param_search:
-        cv_results = pd.DataFrame(m.cv_results_).sort_values(by='mean_test_score', ascending=False)
+        cv_results = pd.DataFrame(model.cv_results_).sort_values(by='mean_test_score', ascending=False)
         print(cv_results.filter(regex='param_|mean_test_score|mean_train_score', axis=1).head())
-        print('Best params: {}'.format(m.best_params_))
-        print(cv_results.loc[m.best_index_, ['mean_train_score', 'mean_test_score']])
+        print('Best params: {}'.format(model.best_params_))
+        print(cv_results.loc[model.best_index_, ['mean_train_score', 'mean_test_score']])
 
     
     model_path = cfg["run_dir"] / "model.pkl"
