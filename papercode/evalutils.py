@@ -92,9 +92,9 @@ def get_run_dirs(root_dir: PosixPath, model: str, loss: str) -> List:
                         pass
             else:
                 if (model == "xgboost"):
-                    if (loss == "MSELoss") and (cfg["use_mse"]):
+                    if (loss == "MSELoss") and (not cfg["use_nse"]):
                         run_dirs.append(folder)
-                    elif (loss == "NSELoss") and (not cfg["use_mse"]):
+                    elif (loss == "NSELoss") and cfg["use_nse"]:
                         run_dirs.append(folder)
                     else:
                         pass

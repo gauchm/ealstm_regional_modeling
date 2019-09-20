@@ -26,7 +26,7 @@ from papercode.datasets import CamelsH5, CamelsTXT
 from papercode.datautils import (add_camels_attributes, load_attributes,
                                  rescale_features)
 from papercode.metrics import calc_nse
-from papercode.nseloss import NSELoss
+from papercode.nseloss import NSELoss, NSEObjective
 from papercode.utils import create_h5_files, get_basin_list
 
 ###########
@@ -36,33 +36,32 @@ from papercode.utils import create_h5_files, get_basin_list
 # fixed settings for all experiments
 GLOBAL_SETTINGS = {
     # XGBoost parameters
-    #'learning_rate': 0.1,
+    #'learning_rate': 0.06221701756176187,
     'n_estimators': 100,
-    #'colsample_bylevel': 0.9,
-    #'colsample_bytree': 0.9,
-    #'subsample': 0.8,
-    #'gamma': 3,
+    #'colsample_bylevel': 0.6301189157231206,
+    #'colsample_bytree': 0.3724164824169106,
+    #'subsample': 0.5414776280205038,
+    #'gamma': 3.8745642610468494,
     #'max_depth': 5,
-    #'min_child_weight': 4,
-    #'reg_alpha': 20,
-    #'reg_lambda': 0.5,
-    'early_stopping_rounds': 40,
-    'objective': 'reg:squarederror',
+    #'min_child_weight': 9,
+    #'reg_alpha': 32.10675491853954,
+    #'reg_lambda': 0.15428564431676683,
+    'early_stopping_rounds': 100,
     
     # parameters for RandomSearchCV:
     'param_dist': {
-        'learning_rate': [0.25],
-        'gamma': sp.stats.uniform(0, 5),
-        'max_depth': sp.stats.randint(2, 8),
-        'min_child_weight': sp.stats.randint(1, 15),
-        'subsample': [0.5],
-        'colsample_bytree': sp.stats.uniform(0.3, 0.7),
+        'learning_rate': [0.25], 
+        'gamma': sp.stats.uniform(0, 5), 
+        'max_depth': sp.stats.randint(2, 8), 
+        'min_child_weight': sp.stats.randint(1, 15), 
+        'subsample': [0.5], 
+        'colsample_bytree': sp.stats.uniform(0.3, 0.7), 
         'colsample_bylevel': sp.stats.uniform(0.3, 0.7),
-        #'reg_alpha': sp.stats.expon(0, 20),
-        #'reg_lambda': sp.stats.expon(0, 20),
+        #'reg_alpha': [32.10675491853954],
+        #'reg_lambda': [0.15428564431676683],
     },
     'n_iter': 10000,
-    'n_cv': 2,
+    'n_cv': 3,
     
     'seq_length': 8,
     'train_start': pd.to_datetime('01101999', format='%d%m%Y'),
@@ -97,10 +96,12 @@ def get_args() -> Dict:
                         type=bool,
                         default=False,
                         help="If True, trains XGBoost without static features")
-    parser.add_argument('--use_mse',
-                        type=bool,
-                        default=True,
-                        help="If True, uses mean squared error as XGBoost objective.")
+    parser.add_argument('--use_nse',
+                        action='store_true',
+                        help="If provided, uses NSE as XGBoost objective.")
+    parser.add_argument('--use_grid_search',
+                        action='store_true',
+                        help="If provided and cfg[param_dist] is non-empty, uses GridSearchCV instead of RandomSearchCV.")
     cfg = vars(parser.parse_args())
 
     # Validation checks
@@ -242,10 +243,6 @@ def train(cfg):
                   concat_static=False,
                   cache=True,
                   no_static=cfg["no_static"])
-    
-    # define loss function
-    if not cfg["use_mse"]:
-        raise NotImplementedError('NSE for XGBoost is not implemented')
 
     # Create train/val sets
     x = ds.x.reshape(len(ds.x), -1)
@@ -254,6 +251,21 @@ def train(cfg):
         attr_indices = np.searchsorted(ds.df.index, ds.sample_2_basin)
         attributes = ds.df.iloc[attr_indices].values
         x = np.concatenate([x, attributes], axis=1)
+        
+    # define loss function
+    if cfg["use_nse"]:
+        # slight hack to enable NSE on XGBoost: replace the target with a unique id
+        # so we can figure out the corresponding q_std during the loss calculation.
+        y_actual = y.copy()
+        y = np.arange(len(y))
+        loss = NSEObjective(y, y_actual, ds.q_stds)
+        objective = loss.nse_objective
+        eval_metric = loss.nse_metric
+        scoring = loss.neg_nse_metric_sklearn
+    else:
+        objective = 'reg:squarederror'
+        eval_metric = 'rmse'
+        scoring = 'neg_mean_squared_error'
     
     num_val_samples = int(len(x) * 0.1)
     val_indices = np.random.choice(range(len(x)), size=num_val_samples, replace=False)
@@ -270,16 +282,23 @@ def train(cfg):
         else:
             n_jobs_xgb = 2
             n_jobs_cv = cfg["num_workers"] // 2
-        model = xgb.XGBRegressor(n_estimators=cfg["n_estimators"], objective=cfg["objective"], n_jobs=n_jobs_xgb, random_state=cfg["seed"])
-        model = model_selection.RandomizedSearchCV(model, cfg["param_dist"], n_iter=cfg["n_iter"], cv=cfg["n_cv"], return_train_score=True, 
-                                                   scoring='neg_mean_squared_error', n_jobs=n_jobs_cv, random_state=cfg["seed"], verbose=5)
+        model = xgb.XGBRegressor(n_estimators=cfg["n_estimators"], objective=objective, n_jobs=n_jobs_xgb, random_state=cfg["seed"])
+        if cfg["use_grid_search"]:
+            model = model_selection.GridSearchCV(model, cfg["param_dist"], cv=cfg["n_cv"], return_train_score=True, 
+                                                 scoring=scoring, n_jobs=n_jobs_cv, verbose=5)
+        else:
+            model = model_selection.RandomizedSearchCV(model, cfg["param_dist"], n_iter=cfg["n_iter"], cv=cfg["n_cv"], return_train_score=True, 
+                                                       scoring=scoring, n_jobs=n_jobs_cv, random_state=cfg["seed"], verbose=5)
     else:
-        model = xgb.XGBRegressor(n_estimators=cfg["n_estimators"], learning_rate=cfg["learning_rate"], reg_alpha=cfg["reg_alpha"], reg_lambda=cfg["reg_lambda"],
-                                 subsample=cfg["subsample"], colsample_bylevel=cfg["colsample_bylevel"], colsample_bytree=cfg["colsample_bytree"], 
+        if cfg["use_grid_search"]:
+            raise ValueError("Can't do grid search when param_dist is empty.")
+        model = xgb.XGBRegressor(n_estimators=cfg["n_estimators"], objective=objective, learning_rate=cfg["learning_rate"], 
+                                 reg_alpha=cfg["reg_alpha"], reg_lambda=cfg["reg_lambda"], subsample=cfg["subsample"], 
+                                 colsample_bylevel=cfg["colsample_bylevel"], colsample_bytree=cfg["colsample_bytree"], 
                                  gamma=cfg["gamma"], max_depth=cfg["max_depth"], min_child_weight=cfg["min_child_weight"], 
                                  n_jobs=cfg["num_workers"], random_state=cfg["seed"])
         
-    model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric='rmse', 
+    model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric=eval_metric, 
               early_stopping_rounds=cfg["early_stopping_rounds"], verbose=not param_search)
     
     if param_search:
@@ -370,6 +389,7 @@ def evaluate_basin(model: xgb.XGBRegressor, ds_test: CamelsTXT, no_static: bool)
         x = np.concatenate([x, ds_test.attributes.repeat(len(x), 1).numpy()], axis=1)
     
     preds = model.predict(x)
+    preds = rescale_features(preds, variable='output')
     
     # set discharges < 0 to zero
     preds[preds < 0] = 0
