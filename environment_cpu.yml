@@ -1,11 +1,13 @@
 name: ealstm
 channels:
   - pytorch
-  - conda-forge
   - bokeh
   - anaconda
+  - conda-forge
   - defaults
 dependencies:
+  - _py-xgboost-mutex=2.0=cpu_0
+  - asn1crypto=0.24.0=py37_1003
   - astroid=2.2.5=py37_0
   - attrs=19.1.0=py37_1
   - backcall=0.1.0=py37_0
@@ -13,10 +15,13 @@ dependencies:
   - bleach=3.1.0=py37_0
   - bokeh=1.2.0=py_0
   - bzip2=1.0.6=h14c3975_5
-  - ca-certificates=2019.6.16=hecc5488_0
-  - certifi=2019.3.9=py37_0
+  - ca-certificates=2019.9.11=hecc5488_0
+  - certifi=2019.9.11=py37_0
   - cffi=1.12.3=py37h2e261b9_0
   - cftime=1.0.3.4=py37hdd07704_1
+  - chardet=3.0.4=py37_1003
+  - colorama=0.4.1=py_0
+  - cryptography=2.7=py37h72c5cf5_0
   - curl=7.64.1=hbc83047_0
   - cycler=0.10.0=py37_0
   - dbus=1.13.6=h746ee38_0
@@ -27,6 +32,8 @@ dependencies:
   - fontconfig=2.13.0=h9420a91_0
   - freetype=2.9.1=h8a8886c_1
   - futures-compat=1.0=py3_0
+  - gitdb2=2.0.5=py_0
+  - gitpython=3.0.2=py_0
   - glib=2.56.2=hd408876_0
   - gmp=6.1.2=hb3b607b_0
   - gst-plugins-base=1.14.0=hbbd80ab_1
@@ -35,6 +42,7 @@ dependencies:
   - hdf4=4.2.13=h3ca952b_2
   - hdf5=1.10.4=hb1b8bf9_0
   - icu=58.2=h9c2bf20_1
+  - idna=2.8=py37_1000
   - intel-openmp=2019.4=243
   - ipykernel=5.1.1=py37h39e3cac_0
   - ipython=7.5.0=py37h39e3cac_0
@@ -50,6 +58,8 @@ dependencies:
   - jupyter_client=5.2.4=py37_0
   - jupyter_console=6.0.0=py37_0
   - jupyter_core=4.4.0=py37_0
+  - jupyterlab=0.35.6=py37_0
+  - jupyterlab_server=0.2.0=py_0
   - kiwisolver=1.1.0=py37he6710b0_0
   - krb5=1.16.1=h173b8e3_7
   - lazy-object-proxy=1.4.1=py37h7b6447c_0
@@ -66,6 +76,7 @@ dependencies:
   - libtiff=4.0.10=h2733197_2
   - libuuid=1.0.3=h1bed415_2
   - libxcb=1.13=h1bed415_1
+  - libxgboost=0.90=he1b5a44_2
   - libxml2=2.9.9=he19cac6_0
   - llvmlite=0.28.0=py37hd408876_0
   - markupsafe=1.1.1=py37h7b6447c_0
@@ -77,6 +88,7 @@ dependencies:
   - mkl_fft=1.0.12=py37ha843d7b_0
   - mkl_random=1.0.2=py37hd81dba3_0
   - nbconvert=5.5.0=py_0
+  - nbdime=1.1.0=py37_0
   - nbformat=4.4.0=py37_0
   - ncurses=6.1=he6710b0_1
   - netcdf4=1.4.2=py37h808af73_0
@@ -86,7 +98,7 @@ dependencies:
   - numpy=1.16.4=py37h7e9f1db_0
   - numpy-base=1.16.4=py37hde5b4d6_0
   - olefile=0.46=py37_0
-  - openssl=1.1.1b=h14c3975_1
+  - openssl=1.1.1c=h516909a_0
   - packaging=19.0=py37_0
   - pandas=0.24.2=py37he6710b0_0
   - pandoc=2.2.3.2=0
@@ -100,12 +112,15 @@ dependencies:
   - prometheus_client=0.6.0=py37_0
   - prompt_toolkit=2.0.9=py37_0
   - ptyprocess=0.6.0=py37_0
+  - py-xgboost=0.90=py37he1b5a44_2
   - pycparser=2.19=py37_0
   - pygments=2.4.2=py_0
   - pylint=2.3.1=py37_0
+  - pyopenssl=19.0.0=py37_0
   - pyparsing=2.4.0=py_0
   - pyqt=5.9.2=py37h05f1152_2
   - pyrsistent=0.14.11=py37h7b6447c_0
+  - pysocks=1.7.0=py37_0
   - python=3.7.3=h0371630_0
   - python-dateutil=2.8.0=py37_0
   - pytorch-cpu=1.1.0=py3.7_cpu_0
@@ -115,12 +130,14 @@ dependencies:
   - qt=5.9.7=h5867ecd_1
   - qtconsole=4.5.1=py_0
   - readline=7.0=h7b6447c_5
+  - requests=2.22.0=py37_1
   - scikit-learn=0.21.2=py37hd81dba3_0
   - scipy=1.2.1=py37h7c811a0_0
   - send2trash=1.5.0=py37_0
   - setuptools=41.0.1=py37_0
   - sip=4.19.8=py37hf484d3e_0
   - six=1.12.0=py37_0
+  - smmap2=2.0.5=py_0
   - sqlite=3.28.0=h7b6447c_0
   - terminado=0.8.2=py37_0
   - testpath=0.4.2=py37_0
@@ -129,12 +146,14 @@ dependencies:
   - tqdm=4.32.1=py_0
   - traitlets=4.3.2=py37_0
   - umap-learn=0.3.9=py37_0
+  - urllib3=1.25.3=py37_0
   - wcwidth=0.1.7=py37_0
   - webencodings=0.5.1=py37_1
   - wheel=0.33.4=py37_0
   - widgetsnbextension=3.4.2=py37_0
   - wrapt=1.11.1=py37h7b6447c_0
   - xarray=0.12.1=py_0
+  - xgboost=0.90=py37he1b5a44_2
   - xz=5.2.4=h14c3975_4
   - yaml=0.1.7=had09818_2
   - zeromq=4.3.1=he6710b0_3
