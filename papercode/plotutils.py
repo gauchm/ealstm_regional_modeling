@@ -58,6 +58,13 @@ model_draw_style = {
         'marker': 's',
         'label': 'XGBoost MSE'
     },
+    'xgboost_NSE': {
+        'ensemble_color': '#ffd300',
+        'single_color': '#ffd300',
+        'linestyle': '-',
+        'marker': 's',
+        'label': 'XGBoost NSE'
+    },
     'ealstm_NSE': {
         'ensemble_color': '#1b9e77',
         'single_color': '#b3e2cd',
@@ -166,6 +173,10 @@ model_specs = {
     'xgboost_MSE': {
         'model': 'xgboost',
         'loss': 'MSELoss'
+    },
+    'xgboost_NSE': {
+        'model': 'xgboost',
+        'loss': 'NSELoss'
     },
     'ealstm_MSE': {
         'model': 'ealstm',
