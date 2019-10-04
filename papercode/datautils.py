@@ -15,7 +15,10 @@ from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
+import fiona as fio
 from numba import njit
+import folium
+from pyproj import CRS, Transformer
 
 # CAMELS catchment characteristics ignored in this study
 INVALID_ATTR = [
@@ -310,3 +313,43 @@ def load_discharge(camels_root: PosixPath, basin: str, area: int) -> pd.Series:
     df.QObs = 28316846.592 * df.QObs * 86400 / (area * 10**6)
 
     return df.QObs
+
+def load_shape(camels_root: PosixPath) -> list :
+    """[summary]
+
+    Parameters
+    ----------
+    camels_root : PosixPath
+        Path to the main directory of the CAMELS data set
+    basin : str
+        8-digit USGS gauge id
+    area : int
+        Catchment area, used to normalize the discharge to mm/day
+
+    Returns
+    -------
+    pd.Series
+        A Series containing the shapefile values.
+
+    Raises
+    ------
+    RuntimeError
+        If no shapefile file was found.
+    """
+    shapefile_path = camels_root / 'basin_dataset_public_v1p2' / 'shapefiles'
+    files = list(shapefile_path.glob('*.shp'))
+
+    file_path = files[2]
+
+    shape = fio.open(file_path)
+
+    return shape
+
+def Reverse(tuples): 
+    new_tup = () 
+    for k in reversed(tuples): 
+        new_tup = new_tup + (k,) 
+    return( new_tup )
+def transform(val1: float,val2: float,transformer:Transformer) -> list :
+    return Reverse(transformer.transform(val1,val2))
+

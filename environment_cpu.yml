@@ -24,6 +24,8 @@ dependencies:
   - defusedxml=0.6.0=py_0
   - entrypoints=0.3=py37_0
   - expat=2.2.6=he6710b0_0
+  - fiona=1.8.4=py37hc38cc03_0
+  - folium=0.10.0=pypi_0 
   - fontconfig=2.13.0=h9420a91_0
   - freetype=2.9.1=h8a8886c_1
   - futures-compat=1.0=py3_0
