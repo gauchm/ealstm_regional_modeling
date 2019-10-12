@@ -38,14 +38,14 @@ GLOBAL_SETTINGS = {
     # XGBoost parameters
     'learning_rate': 0.1,
     'n_estimators': 15000,
-    'colsample_bylevel': 0.6301189157231207,
-    'colsample_bytree': 0.3724164824169106,
+    'colsample_bylevel': 0.4389472445021806,
+    'colsample_bytree': 0.799564425632772,
     'subsample': 0.9,
-    'gamma': 1,
-    'max_depth': 5,
-    'min_child_weight': 9,
-    'reg_alpha': 10,
-    'reg_lambda': 0.15428564431676683,
+    'gamma': 2.2342591613542155,
+    'max_depth': 4,
+    'min_child_weight': 13,
+    'reg_alpha': 8,
+    'reg_lambda': 0.1,
     'early_stopping_rounds': 100,
     
     # parameters for RandomSearchCV:
@@ -327,7 +327,7 @@ def evaluate(user_cfg: Dict):
     with open(user_cfg["run_dir"] / 'cfg.json', 'r') as fp:
         run_cfg = json.load(fp)
 
-    basins = cfg["basins"]
+    basins = run_cfg["basins"]
 
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")
@@ -430,7 +430,7 @@ def eval_robustness(user_cfg: Dict):
     if run_cfg["no_static"]:
         raise NotImplementedError("This function only works with static attributes")
 
-    basins = cfg["basins"]
+    basins = run_cfg["basins"]
 
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")

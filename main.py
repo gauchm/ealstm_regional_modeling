@@ -437,7 +437,7 @@ def evaluate(user_cfg: Dict):
     with open(user_cfg["run_dir"] / 'cfg.json', 'r') as fp:
         run_cfg = json.load(fp)
 
-    basins = cfg["basins"]
+    basins = run_cfg["basins"]
 
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")
@@ -563,7 +563,7 @@ def eval_robustness(user_cfg: Dict):
     if run_cfg["concat_static"] or run_cfg["no_static"]:
         raise NotImplementedError("This function is only implemented for EA-LSTM models")
 
-    basins = cfg["basins"]
+    basins = run_cfg["basins"]
 
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")
