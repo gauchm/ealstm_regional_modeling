@@ -36,36 +36,36 @@ from papercode.utils import create_h5_files, get_basin_list
 # fixed settings for all experiments
 GLOBAL_SETTINGS = {
     # XGBoost parameters
-    #'learning_rate': 0.06221701756176187,
-    'n_estimators': 100,
-    #'colsample_bylevel': 0.6301189157231206,
-    #'colsample_bytree': 0.3724164824169106,
-    #'subsample': 0.5414776280205038,
-    #'gamma': 3.8745642610468494,
-    #'max_depth': 5,
-    #'min_child_weight': 9,
-    #'reg_alpha': 32.10675491853954,
-    #'reg_lambda': 0.15428564431676683,
+    'learning_rate': 0.1,
+    'n_estimators': 15000,
+    'colsample_bylevel': 0.6301189157231207,
+    'colsample_bytree': 0.3724164824169106,
+    'subsample': 0.9,
+    'gamma': 1,
+    'max_depth': 5,
+    'min_child_weight': 9,
+    'reg_alpha': 10,
+    'reg_lambda': 0.15428564431676683,
     'early_stopping_rounds': 100,
     
     # parameters for RandomSearchCV:
     'param_dist': {
-        'learning_rate': [0.25], 
-        'gamma': sp.stats.uniform(0, 5), 
-        'max_depth': sp.stats.randint(2, 8), 
-        'min_child_weight': sp.stats.randint(1, 15), 
-        'subsample': [0.5], 
-        'colsample_bytree': sp.stats.uniform(0.3, 0.7), 
-        'colsample_bylevel': sp.stats.uniform(0.3, 0.7),
-        #'reg_alpha': [32.10675491853954],
+        #'learning_rate': [0.25], 
+        #'gamma': sp.stats.uniform(0, 5),
+        #'max_depth': sp.stats.randint(2, 8),
+        #'min_child_weight': sp.stats.randint(1, 15), 
+        #'subsample': [0.5], 
+        #'colsample_bytree': sp.stats.uniform(0.3, 0.7), 
+        #'colsample_bylevel': sp.stats.uniform(0.3, 0.7),
+        #'reg_alpha': [2],
         #'reg_lambda': [0.15428564431676683],
     },
-    'n_iter': 10000,
-    'n_cv': 3,
+    'n_iter': None,#10000,
+    'n_cv': None,#3,
     
-    'seq_length': 8,
+    'seq_length': 270,
     'train_start': pd.to_datetime('01101999', format='%d%m%Y'),
-    'train_end': pd.to_datetime('30092008', format='%d%m%Y'),
+    'train_end': pd.to_datetime('01102002', format='%d%m%Y'),
     'val_start': pd.to_datetime('01101989', format='%d%m%Y'),
     'val_end': pd.to_datetime('30091999', format='%d%m%Y')
 }    
@@ -102,6 +102,9 @@ def get_args() -> Dict:
     parser.add_argument('--use_grid_search',
                         action='store_true',
                         help="If provided and cfg[param_dist] is non-empty, uses GridSearchCV instead of RandomSearchCV.")
+    parser.add_argument('--basins', 
+                        nargs='+', default=get_basin_list(),
+                        help='List of basins')
     cfg = vars(parser.parse_args())
 
     # Validation checks
@@ -228,7 +231,7 @@ def train(cfg):
     torch.cuda.manual_seed(cfg["seed"])
     torch.manual_seed(cfg["seed"])
 
-    basins = get_basin_list()
+    basins = cfg["basins"]
 
     # create folder structure for this run
     cfg = _setup_run(cfg)
@@ -324,7 +327,7 @@ def evaluate(user_cfg: Dict):
     with open(user_cfg["run_dir"] / 'cfg.json', 'r') as fp:
         run_cfg = json.load(fp)
 
-    basins = get_basin_list()
+    basins = cfg["basins"]
 
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")
@@ -427,7 +430,7 @@ def eval_robustness(user_cfg: Dict):
     if run_cfg["no_static"]:
         raise NotImplementedError("This function only works with static attributes")
 
-    basins = get_basin_list()
+    basins = cfg["basins"]
 
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")

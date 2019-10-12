@@ -52,7 +52,7 @@ GLOBAL_SETTINGS = {
     'learning_rate': 1e-3,
     'seq_length': 270,
     'train_start': pd.to_datetime('01101999', format='%d%m%Y'),
-    'train_end': pd.to_datetime('30092008', format='%d%m%Y'),
+    'train_end': pd.to_datetime('01102002', format='%d%m%Y'),
     'val_start': pd.to_datetime('01101989', format='%d%m%Y'),
     'val_end': pd.to_datetime('30091999', format='%d%m%Y')
 }
@@ -98,6 +98,9 @@ def get_args() -> Dict:
                         type=bool,
                         default=False,
                         help="If True, uses mean squared error as loss function.")
+    parser.add_argument('--basins', 
+                        nargs='+', default=get_basin_list(),
+                        help='List of basins')
     cfg = vars(parser.parse_args())
 
     # Validation checks
@@ -302,7 +305,7 @@ def train(cfg):
     torch.cuda.manual_seed(cfg["seed"])
     torch.manual_seed(cfg["seed"])
 
-    basins = get_basin_list()
+    basins = cfg["basins"]
 
     # create folder structure for this run
     cfg = _setup_run(cfg)
@@ -434,7 +437,7 @@ def evaluate(user_cfg: Dict):
     with open(user_cfg["run_dir"] / 'cfg.json', 'r') as fp:
         run_cfg = json.load(fp)
 
-    basins = get_basin_list()
+    basins = cfg["basins"]
 
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")
@@ -560,7 +563,7 @@ def eval_robustness(user_cfg: Dict):
     if run_cfg["concat_static"] or run_cfg["no_static"]:
         raise NotImplementedError("This function is only implemented for EA-LSTM models")
 
-    basins = get_basin_list()
+    basins = cfg["basins"]
 
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")

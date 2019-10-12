@@ -52,15 +52,15 @@ def get_shape_collections(data: Dict):
 
 model_draw_style = {
     'xgboost_MSE': {
-        'ensemble_color': '#ffd300',
-        'single_color': '#ffd300',
+        'ensemble_color': '#e41a1c',
+        'single_color': '#f9a9ab',
         'linestyle': '--',
         'marker': 's',
         'label': 'XGBoost MSE'
     },
     'xgboost_NSE': {
-        'ensemble_color': '#ffd300',
-        'single_color': '#ffd300',
+        'ensemble_color': '#e41a1c',
+        'single_color': '#f9a9ab',
         'linestyle': '-',
         'marker': 's',
         'label': 'XGBoost NSE'
