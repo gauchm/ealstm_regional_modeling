@@ -19,6 +19,9 @@ import fiona as fio
 from numba import njit
 import folium
 from pyproj import CRS, Transformer
+from shapely.geometry import Polygon,asShape
+from shapely.ops import unary_union
+import re
 
 # CAMELS catchment characteristics ignored in this study
 INVALID_ATTR = [
@@ -346,10 +349,82 @@ def load_shape(camels_root: PosixPath) -> list :
     return shape
 
 def Reverse(tuples): 
+    """[summary]
+
+    Parameters
+    ----------
+    tuples 
+        Tuple to reverse
+
+    Returns
+    -------
+    tuple
+        The tuple reversed
+    """    
     new_tup = () 
     for k in reversed(tuples): 
         new_tup = new_tup + (k,) 
     return( new_tup )
+
+
 def transform(val1: float,val2: float,transformer:Transformer) -> list :
     return Reverse(transformer.transform(val1,val2))
 
+def list_grid(grid_root: PosixPath) -> list :
+    grid_path = grid_root / 'data' / 'east'
+    files = list(grid_path.glob('data_*'))
+
+
+    return files
+
+def read_grid(file_path: PosixPath, weight: float) -> pd.DataFrame :
+    col_names = ['Year', 'Mnth', 'Day', 'precipitation', 'max_temp', 'min_temp', 'wind_speed']
+    df = pd.read_csv(file_path, sep='\s+', header=None, names=col_names)
+    df['weight'] = weight
+    return df
+
+def lmao(file_path: PosixPath, weight: float) -> pd.DataFrame :
+    col_names = ['Year', 'Mnth', 'Day', 'precipitation', 'max_temp', 'min_temp', 'wind_speed']
+    df = pd.read_csv(file_path, sep='\s+', header=None, names=col_names)
+    df['weight'] = weight
+    return df
+
+def create_shape(shapefile: list, gageid: str,transformer:Transformer) -> Polygon :
+    list1=[]
+    for gjson in shapefile:
+        if(gjson["properties"]["GAGEID"]==gageid):
+            for idx, shape in enumerate(gjson['geometry']['coordinates']):
+                if(len(gjson['geometry']['coordinates'])==1):
+                    for idx2, loc in enumerate(shape):
+                        gjson['geometry']['coordinates'][idx][idx2]=transform(loc[0],loc[1],transformer)
+                else: 
+                    for idx2, loc in enumerate(shape[0]):
+                        gjson['geometry']['coordinates'][idx][0][idx2]=transform(loc[0],loc[1],transformer)
+            list1.append(asShape(gjson['geometry']))
+    new_shape=unary_union(list1)
+    return new_shape
+
+def list_overlap(shape:Polygon, CODE_DIR: PosixPath, threshhold: float) -> list :
+    filterlist=list(filter(lambda x:float(re.findall(r"-?\d+.\d+", x.name)[1])>shape.bounds[0]-threshhold
+       and float(re.findall(r"-?\d+.\d+", x.name)[1])<shape.bounds[2]+threshhold     
+       and float(re.findall(r"-?\d+.\d+", x.name)[0])>shape.bounds[1]-threshhold
+       and float(re.findall(r"-?\d+.\d+", x.name)[0])<shape.bounds[3]+threshhold
+                ,list_grid(CODE_DIR)))
+    return filterlist
+
+def find_intersect(shape:Polygon, grids: list) -> pd.DataFrame :
+    area=shape.area
+    area_list=[]
+    for loc in grids:
+        lat=float(re.findall(r"-?\d+.\d+", loc.name)[0])
+        lon=float(re.findall(r"-?\d+.\d+", loc.name)[1])
+        square=Polygon([[lon-0.0625, lat-0.0625], [lon-0.0625, lat+0.0625], [lon+0.0625, lat+0.0625], [lon+0.0625, lat-0.0625]])
+        sect=square.intersection(shape)
+        weight=sect.area/area
+        df=read_grid(loc,weight)
+        area_list.append(df)
+        print(loc)
+    result = pd.concat(area_list)
+    result['wmin'] = result['weight']*result['min_temp']
+    result['wmax'] = result['weight']*result['max_temp']
+    return result
