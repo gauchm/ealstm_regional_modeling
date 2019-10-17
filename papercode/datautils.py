@@ -16,6 +16,7 @@ from typing import List, Tuple
 import numpy as np
 import pandas as pd
 import fiona as fio
+from fiona.crs import from_string
 from numba import njit
 import folium
 from pyproj import CRS, Transformer
@@ -324,10 +325,6 @@ def load_shape(camels_root: PosixPath) -> list :
     ----------
     camels_root : PosixPath
         Path to the main directory of the CAMELS data set
-    basin : str
-        8-digit USGS gauge id
-    area : int
-        Catchment area, used to normalize the discharge to mm/day
 
     Returns
     -------
@@ -340,15 +337,16 @@ def load_shape(camels_root: PosixPath) -> list :
         If no shapefile file was found.
     """
     shapefile_path = camels_root / 'basin_dataset_public_v1p2' / 'shapefiles'
-    files = list(shapefile_path.glob('*.shp'))
+    files = list(shapefile_path.glob('*nhru*.shp'))
 
-    file_path = files[2]
+    all_list=[]
+    for file_path in files:
+        shape = fio.open(file_path)
+        for basin in shape:
+            all_list.append(basin)
+    return all_list
 
-    shape = fio.open(file_path)
-
-    return shape
-
-def Reverse(tuples): 
+def reverse(tuples): 
     """[summary]
 
     Parameters
@@ -368,9 +366,38 @@ def Reverse(tuples):
 
 
 def transform(val1: float,val2: float,transformer:Transformer) -> list :
-    return Reverse(transformer.transform(val1,val2))
+    """[summary]
+
+    Parameters
+    ----------
+    val1,val2 
+        coordinate to transformer
+        
+    transformer
+        crs used to transformer
+
+
+    Returns
+    -------
+    tuple
+        coordinate after applying crs transformation
+    """    
+    return reverse(transformer.transform(val1,val2))
 
 def list_grid(grid_root: PosixPath) -> list :
+    """[summary]
+
+    Parameters
+    ----------
+    grid_root
+        root to look for gridded squares
+
+
+    Returns
+    -------
+    list
+        list of gridded squares
+    """  
     grid_path = grid_root / 'data' / 'east'
     files = list(grid_path.glob('data_*'))
 
@@ -378,18 +405,44 @@ def list_grid(grid_root: PosixPath) -> list :
     return files
 
 def read_grid(file_path: PosixPath, weight: float) -> pd.DataFrame :
-    col_names = ['Year', 'Mnth', 'Day', 'precipitation', 'max_temp', 'min_temp', 'wind_speed']
-    df = pd.read_csv(file_path, sep='\s+', header=None, names=col_names)
-    df['weight'] = weight
-    return df
+    """[summary]
 
-def lmao(file_path: PosixPath, weight: float) -> pd.DataFrame :
+    Parameters
+    ----------
+    file_path
+        square to read
+    
+    weight
+        associated weight to the square
+
+    Returns
+    -------
+    list
+        list of gridded squares
+    """  
     col_names = ['Year', 'Mnth', 'Day', 'precipitation', 'max_temp', 'min_temp', 'wind_speed']
     df = pd.read_csv(file_path, sep='\s+', header=None, names=col_names)
     df['weight'] = weight
     return df
 
 def create_shape(shapefile: list, gageid: str,transformer:Transformer) -> Polygon :
+    """[summary]
+
+    Parameters
+    ----------
+    shapefile
+        list of shapefiles to merge
+    
+    gageid
+        gage id associated basin
+    transformer
+        Transformer used to transform
+
+    Returns
+    -------
+    list
+        list of gridded squares
+    """  
     list1=[]
     for gjson in shapefile:
         if(gjson["properties"]["GAGEID"]==gageid):
@@ -405,6 +458,23 @@ def create_shape(shapefile: list, gageid: str,transformer:Transformer) -> Polygo
     return new_shape
 
 def list_overlap(shape:Polygon, CODE_DIR: PosixPath, threshhold: float) -> list :
+    """[summary]
+
+    Parameters
+    ----------
+    shape
+        basin of interest
+    
+    CODE_DIR
+        directory of gridded data
+    threshhold
+        square length to identify overlaps
+
+    Returns
+    -------
+    list
+        list of overlapping squares
+    """      
     filterlist=list(filter(lambda x:float(re.findall(r"-?\d+.\d+", x.name)[1])>shape.bounds[0]-threshhold
        and float(re.findall(r"-?\d+.\d+", x.name)[1])<shape.bounds[2]+threshhold     
        and float(re.findall(r"-?\d+.\d+", x.name)[0])>shape.bounds[1]-threshhold
@@ -413,12 +483,29 @@ def list_overlap(shape:Polygon, CODE_DIR: PosixPath, threshhold: float) -> list 
     return filterlist
 
 def find_intersect(shape:Polygon, grids: list) -> pd.DataFrame :
+    """[summary]
+
+    Parameters
+    ----------
+    shape
+        basin of interest
+    
+    grids
+        square to search for intersection
+
+    Returns
+    -------
+    pd
+        dataframe of each overlapping square with the percentage of area overlapping
+    """      
+    #the dimension of a square, which is 1/16's of a lon/lat
+    SQUARE_DIMENSION=0.0625
     area=shape.area
     area_list=[]
     for loc in grids:
         lat=float(re.findall(r"-?\d+.\d+", loc.name)[0])
         lon=float(re.findall(r"-?\d+.\d+", loc.name)[1])
-        square=Polygon([[lon-0.0625, lat-0.0625], [lon-0.0625, lat+0.0625], [lon+0.0625, lat+0.0625], [lon+0.0625, lat-0.0625]])
+        square=Polygon([[lon-SQUARE_DIMENSION, lat-SQUARE_DIMENSION], [lon-SQUARE_DIMENSION, lat+SQUARE_DIMENSION], [lon+SQUARE_DIMENSION, lat+SQUARE_DIMENSION], [lon+SQUARE_DIMENSION, lat-SQUARE_DIMENSION]])
         sect=square.intersection(shape)
         weight=sect.area/area
         df=read_grid(loc,weight)
