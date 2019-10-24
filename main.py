@@ -51,8 +51,6 @@ GLOBAL_SETTINGS = {
     'log_interval': 50,
     'learning_rate': 1e-3,
     'seq_length': 270,
-    'train_start': pd.to_datetime('01101999', format='%d%m%Y'),
-    'train_end': pd.to_datetime('01102002', format='%d%m%Y'),
     'val_start': pd.to_datetime('01101989', format='%d%m%Y'),
     'val_end': pd.to_datetime('30091999', format='%d%m%Y')
 }
@@ -98,10 +96,16 @@ def get_args() -> Dict:
                         type=bool,
                         default=False,
                         help="If True, uses mean squared error as loss function.")
+    parser.add_argument('--run_dir_base', type=str, default="runs", help="For training mode. Path to store run directories in.")
+    parser.add_argument('--train_start', type=str, help="Training start date (ddmmyyyy).")
+    parser.add_argument('--train_end', type=str, help="Training end date (ddmmyyyy).")
     parser.add_argument('--basins', 
                         nargs='+', default=get_basin_list(),
                         help='List of basins')
     cfg = vars(parser.parse_args())
+    
+    cfg["train_start"] = pd.to_datetime(cfg["train_start"], format='%d%m%Y')
+    cfg["train_end"] = pd.to_datetime(cfg["train_end"], format='%d%m%Y')
 
     # Validation checks
     if (cfg["mode"] == "train") and (cfg["seed"] is None):
@@ -123,6 +127,8 @@ def get_args() -> Dict:
     cfg["camels_root"] = Path(cfg["camels_root"])
     if cfg["run_dir"] is not None:
         cfg["run_dir"] = Path(cfg["run_dir"])
+    if cfg["run_dir_base"] is not None:
+        cfg["run_dir_base"] = Path(cfg["run_dir_base"])
     return cfg
 
 
@@ -145,7 +151,7 @@ def _setup_run(cfg: Dict) -> Dict:
     hour = f"{now.hour}".zfill(2)
     minute = f"{now.minute}".zfill(2)
     run_name = f'run_{day}{month}_{hour}{minute}_seed{cfg["seed"]}'
-    cfg['run_dir'] = Path(__file__).absolute().parent / "runs" / run_name
+    cfg['run_dir'] = Path(__file__).absolute().parent / cfg["run_dir_base"] / run_name
     if not cfg["run_dir"].is_dir():
         cfg["train_dir"] = cfg["run_dir"] / 'data' / 'train'
         cfg["train_dir"].mkdir(parents=True)

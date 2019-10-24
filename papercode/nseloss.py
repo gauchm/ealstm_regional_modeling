@@ -67,7 +67,16 @@ class NSEObjective:
         self.eps = eps
         
     def nse_objective(self, y_true, y_pred):
-        """ NSE objective for XGBoost """
+        """ NSE objective for XGBoost (sklearn API) """
+        indices = np.searchsorted(self.dummy_target, y_true)
+        normalization = ((self.q_stds[indices] + self.eps)**2)
+        grad = 2 * (y_pred - self.actual_target[indices]) / normalization
+        hess = 2.0 / normalization
+        return grad, hess
+    
+    def nse_objective_non_sklearn(self, y_pred, dtrain):
+        """ NSE objective for XGBoost (non-sklearn API) """
+        y_true = dtrain.get_label()
         indices = np.searchsorted(self.dummy_target, y_true)
         normalization = ((self.q_stds[indices] + self.eps)**2)
         grad = 2 * (y_pred - self.actual_target[indices]) / normalization
