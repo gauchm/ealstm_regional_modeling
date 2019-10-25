@@ -47,23 +47,19 @@ GLOBAL_SETTINGS = {
     
     'subsample_param_dist': {
         'subsample': sp.stats.uniform(0.3, 0.7),
-        'colsample_bylevel': sp.stats.uniform(0.3, 0.7),
         'colsample_bytree': sp.stats.uniform(0.3, 0.7),
     },
-    'subsample_n_iter': 800,
+    'subsample_n_iter': 100,
     
     'reg_param_dist': {
         'reg_alpha': sp.stats.expon(0, 20),
         'reg_lambda': sp.stats.expon(0, 20),
     },
-    'reg_n_iter': 400,
-    
-    'lr_param_dist': { 'learning_rate': sp.stats.uniform(0.001, 0.3) },
-    'lr_n_iter': 200,
+    'reg_n_iter': 100,
     
     'n_folds': 2,
     
-    'seq_length': 270,
+    'seq_length': 30,
     'val_start': pd.to_datetime('01101989', format='%d%m%Y'),
     'val_end': pd.to_datetime('30091999', format='%d%m%Y')
 }    
@@ -117,10 +113,10 @@ def get_args() -> Dict:
 
     if (cfg["mode"] in ["evaluate", "eval_robustness"]) and (cfg["run_dir"] is None):
         raise ValueError("In evaluation mode a run directory (--run_dir) has to be specified")
-        
+            
     # combine global settings with user config
     cfg.update(GLOBAL_SETTINGS)
-
+    
     if cfg["mode"] == "train":
         # print config to terminal
         for key, val in cfg.items():
@@ -150,12 +146,15 @@ def _setup_run(cfg: Dict) -> Dict:
     dict
         Dictionary containing the updated run config
     """
+    
+    now = datetime.now()
+    day = f"{now.day}".zfill(2)
+    month = f"{now.month}".zfill(2)
+    hour = f"{now.hour}".zfill(2)
+    minute = f"{now.minute}".zfill(2)
+    second = f"{now.second}".zfill(2)
+    cfg["run_starttime"] = f"{now.year}{day}{month}_{hour}{minute}{second}"
     if cfg["run_name"] is None:
-        now = datetime.now()
-        day = f"{now.day}".zfill(2)
-        month = f"{now.month}".zfill(2)
-        hour = f"{now.hour}".zfill(2)
-        minute = f"{now.minute}".zfill(2)
         run_name = f'run_xgb_{day}{month}_{hour}{minute}_seed{cfg["seed"]}'
     else:
         run_name = f'run_{cfg["run_name"]}_seed{cfg["seed"]}'
@@ -259,11 +258,12 @@ def train(cfg):
 
     # Create train/val sets
     x = ds.x.reshape(len(ds.x), -1)
-    y = ds.y.reshape(len(ds.y))
+    y = ds.y.reshape(len(ds.y))       
     if not cfg["no_static"]:
         attr_indices = np.searchsorted(ds.df.index, ds.sample_2_basin)
         attributes = ds.df.iloc[attr_indices].values
         x = np.concatenate([x, attributes], axis=1)
+    print(x.shape, y.shape)
         
     # define loss function
     if cfg["use_nse"]:
@@ -290,8 +290,8 @@ def train(cfg):
 
     if cfg["model_dir"] is None:
         # Find optimal number of iterations
-        learning_rate = 0.25
-        model = xgb.XGBRegressor(n_estimators=5000, learning_rate=learning_rate, max_depth=5, gamma=0, subsample=0.7, 
+        learning_rate = 0.3
+        model = xgb.XGBRegressor(n_estimators=1000, learning_rate=learning_rate, max_depth=5, gamma=0, subsample=0.7, 
                                  colsample_bytree=0.8, n_jobs=cfg["num_workers"], random_state=cfg["seed"])
         xgb_param = model.get_xgb_params()
         xgb_train = xgb.DMatrix(x[train_indices], label=y[train_indices])
@@ -350,29 +350,27 @@ def train(cfg):
         print(cv_results.filter(regex='param_|mean_test_score|mean_train_score', axis=1).head())
         print(cv_results.loc[model.best_index_, ['mean_train_score', 'mean_test_score']])
 
-        # Search learning rate
-        best_lr = None, None, np.inf  # lr, n_estimators, score
-        for lr in cfg["lr_param_dist"]["learning_rate"].rvs(size=cfg["lr_n_iter"]):
-            model = xgb.XGBRegressor(n_estimators=100000, learning_rate=lr, n_jobs=cfg["num_workers"], random_state=cfg["seed"])
-            xgb_param = model.get_xgb_params()
-            for k,v in best_params.items():
-                xgb_param[k] = v
-            xgb_train = xgb.DMatrix(x[train_indices], label=y[train_indices])
-            if cfg["use_nse"]:
-                cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], 
-                                    verbose_eval=True, obj=objective_non_sklearn, feval=eval_metric, early_stopping_rounds=500, seed=cfg["seed"])
-            else:
-                xgb_param['objective'] = objective
-                cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], 
-                                    verbose_eval=True, metrics=eval_metric, early_stopping_rounds=500, seed=cfg["seed"])
-            print(f"Best n_estimators for lr {lr}: {cv_results.shape[0]}")
-            mean_score = cv_results.iloc[-1]['test-{}-mean'.format('nse' if cfg["use_nse"] else 'rmse')]
-            if mean_score < best_lr[2]:
-                best_lr = lr, cv_results.shape[0], mean_score
-        print(f"Best lr: {best_lr[0]} with mean score {best_lr[2]} and best n_estimators {best_lr[1]}")
-
-        xgb_param["n_estimators"] = best_lr[1]
-        xgb_param["learning_rate"] = best_lr[0]
+        # Lower learning rate, find n_estimators
+        # we can't afford too high n_estimators for large datasets, so we trade off with lr.
+        learning_rate = 0.05 if len(basin_sample) < 100 else 0.1
+        n_estimators = 100000 if len(basin_sample) < 100 else (10000 if len(basin_sample) < 300 else 1000)
+        model = xgb.XGBRegressor(n_estimators=n_estimators, learning_rate=learning_rate, n_jobs=cfg["num_workers"], random_state=cfg["seed"])
+        xgb_param = model.get_xgb_params()
+        for k,v in best_params.items():
+            xgb_param[k] = v
+        xgb_train = xgb.DMatrix(x[train_indices], label=y[train_indices])
+        if cfg["use_nse"]:
+            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], 
+                                verbose_eval=True, obj=objective_non_sklearn, feval=eval_metric, early_stopping_rounds=100, seed=cfg["seed"])
+        else:
+            xgb_param['objective'] = objective
+            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], 
+                                verbose_eval=True, metrics=eval_metric, early_stopping_rounds=100, seed=cfg["seed"])
+        print(f"Best n_estimators: {cv_results.shape[0]}")
+        mean_score = cv_results.iloc[-1]['test-{}-mean'.format('nse' if cfg["use_nse"] else 'rmse')]
+        
+        xgb_param["n_estimators"] = cv_results.shape[0]
+        xgb_param["learning_rate"] = learning_rate
         print(f"Final parameters: {xgb_param}")
         
     else:

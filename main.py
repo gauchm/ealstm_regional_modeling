@@ -150,6 +150,8 @@ def _setup_run(cfg: Dict) -> Dict:
     month = f"{now.month}".zfill(2)
     hour = f"{now.hour}".zfill(2)
     minute = f"{now.minute}".zfill(2)
+    second = f"{now.second}".zfill(2)
+    cfg["run_starttime"] = f"{now.year}{day}{month}_{hour}{minute}{second}"
     run_name = f'run_{day}{month}_{hour}{minute}_seed{cfg["seed"]}'
     cfg['run_dir'] = Path(__file__).absolute().parent / cfg["run_dir_base"] / run_name
     if not cfg["run_dir"].is_dir():

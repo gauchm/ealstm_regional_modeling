@@ -41,8 +41,7 @@ GLOBAL_SETTINGS = {
 }
 
 ealstm_sbatch_template = \
-"""
-#!/bin/bash
+"""#!/bin/bash
 #SBATCH --account=def-kshook
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task={num_workers}
@@ -57,8 +56,7 @@ date
 """
 
 xgb_sbatch_template = \
-"""
-#!/bin/bash
+"""#!/bin/bash
 #SBATCH --account=def-kshook
 #SBATCH --cpus-per-task={num_workers}
 #SBATCH --mem={memory}       # memory (per node)
