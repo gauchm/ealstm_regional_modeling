@@ -1,5 +1,5 @@
 """
-Code to train and evaluate XGBoost models.
+Code to train and evaluate Random Forest models.
 Adapted from https://github.com/kratzert/ealstm_regional_modeling/blob/master/main.py
 """
 
@@ -18,8 +18,8 @@ import scipy as sp
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-import xgboost as xgb
 from sklearn import model_selection
+from sklearn.ensemble import RandomForestRegressor
 from tqdm import tqdm
 
 from papercode.datasets import CamelsH5, CamelsTXT
@@ -36,32 +36,15 @@ from papercode.utils import create_h5_files, get_basin_list
 # fixed settings for all experiments
 GLOBAL_SETTINGS = {
     # parameters for RandomSearchCVs:
-    'tree_param_dist': {
-        'max_depth': sp.stats.randint(2, 8),
-        'min_child_weight': sp.stats.randint(1, 15), 
+    'param_dist': {
+        'max_depth': sp.stats.randint(2, 20),
+        'min_samples_split': sp.stats.randint(2, 20), 
+        'min_samples_leaf': sp.stats.randint(1, 20), 
     },
-    'tree_n_iter': 100,
+    'n_iter': 500,
+    'n_estimators': 50,
     
-    'gamma_param_dist': { 'gamma': sp.stats.uniform(0, 5) },
-    'gamma_n_iter': 10,
-    
-    'subsample_param_dist': {
-        'subsample': sp.stats.uniform(0.3, 0.7),
-        'colsample_bylevel': sp.stats.uniform(0.3, 0.7),
-        'colsample_bytree': sp.stats.uniform(0.3, 0.7),
-    },
-    'subsample_n_iter': 800,
-    
-    'reg_param_dist': {
-        'reg_alpha': sp.stats.expon(0, 20),
-        'reg_lambda': sp.stats.expon(0, 20),
-    },
-    'reg_n_iter': 400,
-    
-    'lr_param_dist': { 'learning_rate': sp.stats.uniform(0.001, 0.3) },
-    'lr_n_iter': 200,
-    
-    'n_folds': 2,
+    'n_folds': 3,
     
     'seq_length': 270,
     'val_start': pd.to_datetime('01101989', format='%d%m%Y'),
@@ -95,11 +78,8 @@ def get_args() -> Dict:
     parser.add_argument('--no_static',
                         type=bool,
                         default=False,
-                        help="If True, trains XGBoost without static features")
-    parser.add_argument('--use_nse',
-                        action='store_true',
-                        help="If provided, uses NSE as XGBoost objective.")
-    parser.add_argument('--model_dir', type=str, required=False, help="For training mode. If provided, uses XGBoost parameters from this run, else searches for suitable parameters.")
+                        help="If True, trains Random Forest without static features")
+    parser.add_argument('--model_dir', type=str, required=False, help="For training mode. If provided, uses parameters from this run, else searches for suitable parameters.")
     parser.add_argument('--train_start', type=str, help="Training start date (ddmmyyyy).")
     parser.add_argument('--train_end', type=str, help="Training end date (ddmmyyyy).")
     parser.add_argument('--basins', 
@@ -156,7 +136,7 @@ def _setup_run(cfg: Dict) -> Dict:
         month = f"{now.month}".zfill(2)
         hour = f"{now.hour}".zfill(2)
         minute = f"{now.minute}".zfill(2)
-        run_name = f'run_xgb_{day}{month}_{hour}{minute}_seed{cfg["seed"]}'
+        run_name = f'run_rf_{day}{month}_{hour}{minute}_seed{cfg["seed"]}'
     else:
         run_name = f'run_{cfg["run_name"]}_seed{cfg["seed"]}'
     cfg['run_dir'] = Path(__file__).absolute().parent / cfg["run_dir_base"] / run_name
@@ -264,129 +244,33 @@ def train(cfg):
         attr_indices = np.searchsorted(ds.df.index, ds.sample_2_basin)
         attributes = ds.df.iloc[attr_indices].values
         x = np.concatenate([x, attributes], axis=1)
-        
-    # define loss function
-    if cfg["use_nse"]:
-        # slight hack to enable NSE on XGBoost: replace the target with a unique id
-        # so we can figure out the corresponding q_std during the loss calculation.
-        y_actual = y.copy()
-        y = np.arange(len(y))
-        loss = NSEObjective(y, y_actual, ds.q_stds)
-        objective = loss.nse_objective
-        objective_non_sklearn = loss.nse_objective_non_sklearn  # xgb.cv needs a different signature for custom objective functions
-        eval_metric = loss.nse_metric
-        scoring = loss.neg_nse_metric_sklearn
-    else:
-        objective = 'reg:squarederror'
-        eval_metric = 'rmse'
-        scoring = 'neg_mean_squared_error'
     
-    num_val_samples = int(len(x) * 0.1)
-    val_indices = np.random.choice(range(len(x)), size=num_val_samples, replace=False)
-    train_indices = np.setdiff1d(range(len(x)), val_indices)
-
-    val = [(x[train_indices], y[train_indices]), 
-           (x[val_indices], y[val_indices])]
-
+    print(x.shape, y.shape)
     if cfg["model_dir"] is None:
         # Find optimal number of iterations
-        learning_rate = 0.25
-        model = xgb.XGBRegressor(n_estimators=5000, learning_rate=learning_rate, max_depth=5, gamma=0, subsample=0.7, 
-                                 colsample_bytree=0.8, n_jobs=cfg["num_workers"], random_state=cfg["seed"])
-        xgb_param = model.get_xgb_params()
-        xgb_train = xgb.DMatrix(x[train_indices], label=y[train_indices])
-        if cfg["use_nse"]:
-            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], verbose_eval=True,
-                           obj=objective_non_sklearn, feval=eval_metric, early_stopping_rounds=50, seed=cfg["seed"])
-        else:
-            xgb_param['objective'] = objective
-            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], verbose_eval=True,
-                                metrics=eval_metric, early_stopping_rounds=50, seed=cfg["seed"])
-        best_n_estimators = cv_results.shape[0]
-        print(cv_results.tail())
-        print(f"Best n_estimators: {best_n_estimators}")
-
-        # Search tree parameters
-        model = xgb.XGBRegressor(n_estimators=best_n_estimators, learning_rate=learning_rate, gamma=0, subsample=0.7, 
-                                 colsample_bylevel=0.8, objective=objective, n_jobs=1, random_state=cfg["seed"])
-        model = model_selection.RandomizedSearchCV(model, cfg["tree_param_dist"], n_iter=cfg["tree_n_iter"], cv=cfg["n_folds"], return_train_score=True, 
-                                                   scoring=scoring, n_jobs=cfg["num_workers"], refit=False, random_state=cfg["seed"], verbose=5)
-        model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric=eval_metric, verbose=False)
+        
+        model = RandomForestRegressor(n_estimators=cfg["n_estimators"], n_jobs=cfg["num_workers"], random_state=cfg["seed"], verbose=10)
+        model = model_selection.RandomizedSearchCV(model, cfg["param_dist"], n_iter=cfg["n_iter"], cv=cfg["n_folds"], return_train_score=True, 
+                                                   scoring='neg_mean_squared_error', n_jobs=1, refit=True, random_state=cfg["seed"], verbose=10)
+        model.fit(x, y)
         best_params = model.best_params_
-        print(f"Best tree parameters: {best_params}")
-
-        # Search for gamma
-        for k,v in best_params.items():
-            cfg["gamma_param_dist"][k] = [v]
-        model = xgb.XGBRegressor(n_estimators=best_n_estimators, learning_rate=learning_rate, subsample=0.7, 
-                                 colsample_bylevel=0.8, objective=objective, n_jobs=1, random_state=cfg["seed"])
-        model = model_selection.RandomizedSearchCV(model, cfg["gamma_param_dist"], n_iter=cfg["gamma_n_iter"], cv=cfg["n_folds"], return_train_score=True, 
-                                                   scoring=scoring, n_jobs=cfg["num_workers"], refit=False, random_state=cfg["seed"], verbose=5)
-        model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric=eval_metric, verbose=False)
-        best_params = model.best_params_
-        print(f"Best gamma parameters: {best_params}")
-
-        # Search subsample parameters
-        for k,v in best_params.items():
-            cfg["subsample_param_dist"][k] = [v]
-        model = xgb.XGBRegressor(n_estimators=best_n_estimators, learning_rate=learning_rate, objective=objective, n_jobs=1, random_state=cfg["seed"])
-        model = model_selection.RandomizedSearchCV(model, cfg["subsample_param_dist"], n_iter=cfg["subsample_n_iter"], cv=cfg["n_folds"], return_train_score=True, 
-                                                   scoring=scoring, n_jobs=cfg["num_workers"], refit=False, random_state=cfg["seed"], verbose=5)
-        model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric=eval_metric, verbose=False)
-        best_params = model.best_params_
-        print(f"Best subsample parameters: {best_params}")
-
-        # Search regularization parameters
-        for k,v in best_params.items():
-            cfg["reg_param_dist"][k] = [v]
-        model = xgb.XGBRegressor(n_estimators=best_n_estimators, learning_rate=learning_rate, objective=objective, n_jobs=1, random_state=cfg["seed"])
-        model = model_selection.RandomizedSearchCV(model, cfg["reg_param_dist"], n_iter=cfg["reg_n_iter"], cv=cfg["n_folds"], return_train_score=True, 
-                                                   scoring=scoring, n_jobs=cfg["num_workers"], refit=False, random_state=cfg["seed"], verbose=5)
-        model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric=eval_metric, verbose=False)
-        best_params = model.best_params_
-        print(f"Best regularization parameters: {best_params}")
+        print(f"Best parameters: {best_params}")
 
         cv_results = pd.DataFrame(model.cv_results_).sort_values(by='mean_test_score', ascending=False)
         print(cv_results.filter(regex='param_|mean_test_score|mean_train_score', axis=1).head())
         print(cv_results.loc[model.best_index_, ['mean_train_score', 'mean_test_score']])
-
-        # Search learning rate
-        best_lr = None, None, np.inf  # lr, n_estimators, score
-        for lr in cfg["lr_param_dist"]["learning_rate"].rvs(size=cfg["lr_n_iter"]):
-            model = xgb.XGBRegressor(n_estimators=100000, learning_rate=lr, n_jobs=cfg["num_workers"], random_state=cfg["seed"])
-            xgb_param = model.get_xgb_params()
-            for k,v in best_params.items():
-                xgb_param[k] = v
-            xgb_train = xgb.DMatrix(x[train_indices], label=y[train_indices])
-            if cfg["use_nse"]:
-                cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], 
-                                    verbose_eval=True, obj=objective_non_sklearn, feval=eval_metric, early_stopping_rounds=500, seed=cfg["seed"])
-            else:
-                xgb_param['objective'] = objective
-                cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], 
-                                    verbose_eval=True, metrics=eval_metric, early_stopping_rounds=500, seed=cfg["seed"])
-            print(f"Best n_estimators for lr {lr}: {cv_results.shape[0]}")
-            mean_score = cv_results.iloc[-1]['test-{}-mean'.format('nse' if cfg["use_nse"] else 'rmse')]
-            if mean_score < best_lr[2]:
-                best_lr = lr, cv_results.shape[0], mean_score
-        print(f"Best lr: {best_lr[0]} with mean score {best_lr[2]} and best n_estimators {best_lr[1]}")
-
-        xgb_param["n_estimators"] = best_lr[1]
-        xgb_param["learning_rate"] = best_lr[0]
-        print(f"Final parameters: {xgb_param}")
         
     else:
         print('Using model parameters from {}'.format(cfg["model_dir"]))
         model = pickle.load(open(cfg["model_dir"] / "model.pkl", "rb"))
-        xgb_param = model.get_xgb_params()
-        print(xgb_param)
+        model_params = model.get_params()
+        print(model_params)
         
-    model = xgb.XGBRegressor()
-    model.set_params(**xgb_param)
-    model.objective = objective
-    model.random_state = cfg["seed"]
-    model.n_jobs = cfg["num_workers"]
-    model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric=eval_metric, verbose=True)    
+        model = RandomForestRegressor(n_estimators=cfg["n_estimators"], n_jobs=cfg["num_workers"], random_state=cfg["seed"])
+        model.set_params(**model_params)
+        model.random_state = cfg["seed"]
+        model.n_jobs = cfg["num_workers"]
+        model.fit(x, y)
     
     model_path = cfg["run_dir"] / "model.pkl"
     pickle.dump(model, open(str(model_path), 'wb'))
@@ -441,13 +325,13 @@ def evaluate(user_cfg: Dict):
     _store_results(user_cfg, run_cfg, results)
 
 
-def evaluate_basin(model: xgb.XGBRegressor, ds_test: CamelsTXT, no_static: bool) -> Tuple[np.ndarray, np.ndarray]:
+def evaluate_basin(model: RandomForestRegressor, ds_test: CamelsTXT, no_static: bool) -> Tuple[np.ndarray, np.ndarray]:
     """Evaluate model on a single basin
 
     Parameters
     ----------
-    model : xgb.XGBRegressor
-        The XGBoost model to evaluate
+    model : RandomForestRegressor
+        The RF model to evaluate
     ds_test : CamelsTXT
         CAMELS dataset containing the basin data
     no_static: bool
@@ -493,9 +377,9 @@ def _store_results(user_cfg: Dict, run_cfg: Dict, results: pd.DataFrame):
 
     """
     if run_cfg["no_static"]:
-        file_name = user_cfg["run_dir"] / f"xgboost_no_static_seed{run_cfg['seed']}.p"
+        file_name = user_cfg["run_dir"] / f"rf_no_static_seed{run_cfg['seed']}.p"
     else:
-        file_name = user_cfg["run_dir"] / f"xgboost_seed{run_cfg['seed']}.p"
+        file_name = user_cfg["run_dir"] / f"rf_seed{run_cfg['seed']}.p"
 
     with (file_name).open('wb') as fp:
         pickle.dump(results, fp)
