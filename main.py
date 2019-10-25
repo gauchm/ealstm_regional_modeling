@@ -97,6 +97,7 @@ def get_args() -> Dict:
                         default=False,
                         help="If True, uses mean squared error as loss function.")
     parser.add_argument('--run_dir_base', type=str, default="runs", help="For training mode. Path to store run directories in.")
+    parser.add_argument('--run_name', type=str, required=False, help="For training mode. Name of the run.")
     parser.add_argument('--train_start', type=str, help="Training start date (ddmmyyyy).")
     parser.add_argument('--train_end', type=str, help="Training end date (ddmmyyyy).")
     parser.add_argument('--basins', 
@@ -152,7 +153,10 @@ def _setup_run(cfg: Dict) -> Dict:
     minute = f"{now.minute}".zfill(2)
     second = f"{now.second}".zfill(2)
     cfg["run_starttime"] = f"{now.year}{day}{month}_{hour}{minute}{second}"
-    run_name = f'run_{day}{month}_{hour}{minute}_seed{cfg["seed"]}'
+    if cfg["run_name"] is None:
+        run_name =  f'run_{day}{month}_{hour}{minute}_seed{cfg["seed"]}'
+    else:
+        run_name = cfg["run_name"]
     cfg['run_dir'] = Path(__file__).absolute().parent / cfg["run_dir_base"] / run_name
     if not cfg["run_dir"].is_dir():
         cfg["train_dir"] = cfg["run_dir"] / 'data' / 'train'

@@ -157,7 +157,7 @@ def _setup_run(cfg: Dict) -> Dict:
     if cfg["run_name"] is None:
         run_name = f'run_xgb_{day}{month}_{hour}{minute}_seed{cfg["seed"]}'
     else:
-        run_name = f'run_{cfg["run_name"]}_seed{cfg["seed"]}'
+        run_name = cfg["run_name"]
     cfg['run_dir'] = Path(__file__).absolute().parent / cfg["run_dir_base"] / run_name
     if not cfg["run_dir"].is_dir():
         cfg["train_dir"] = cfg["run_dir"] / 'data' / 'train'
@@ -352,8 +352,8 @@ def train(cfg):
 
         # Lower learning rate, find n_estimators
         # we can't afford too high n_estimators for large datasets, so we trade off with lr.
-        learning_rate = 0.05 if len(basin_sample) < 100 else 0.1
-        n_estimators = 100000 if len(basin_sample) < 100 else (10000 if len(basin_sample) < 300 else 1000)
+        learning_rate = 0.05 if len(basins) < 100 else 0.1
+        n_estimators = 100000 if len(basins) < 100 else (10000 if len(basins) < 300 else 1000)
         model = xgb.XGBRegressor(n_estimators=n_estimators, learning_rate=learning_rate, n_jobs=cfg["num_workers"], random_state=cfg["seed"])
         xgb_param = model.get_xgb_params()
         for k,v in best_params.items():
