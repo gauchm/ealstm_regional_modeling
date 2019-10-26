@@ -43,11 +43,11 @@ GLOBAL_SETTINGS = {
     'tree_n_iter': 100,
     
     'gamma_param_dist': { 'gamma': sp.stats.uniform(0, 5) },
-    'gamma_n_iter': 10,
+    'gamma_n_iter': 20,
     
     'subsample_param_dist': {
-        'subsample': sp.stats.uniform(0.3, 0.7),
-        'colsample_bytree': sp.stats.uniform(0.3, 0.7),
+        'subsample': sp.stats.uniform(0.5, 0.5),
+        'colsample_bytree': sp.stats.uniform(0.4, 0.6),
     },
     'subsample_n_iter': 100,
     
@@ -57,7 +57,8 @@ GLOBAL_SETTINGS = {
     },
     'reg_n_iter': 100,
     
-    'n_folds': 2,
+    'n_folds': 3,
+    'n_folds_itersearch': 5,
     
     'seq_length': 30,
     'val_start': pd.to_datetime('01101989', format='%d%m%Y'),
@@ -291,24 +292,27 @@ def train(cfg):
     if cfg["model_dir"] is None:
         # Find optimal number of iterations
         learning_rate = 0.3
-        model = xgb.XGBRegressor(n_estimators=1000, learning_rate=learning_rate, max_depth=5, gamma=0, subsample=0.7, 
-                                 colsample_bytree=0.8, n_jobs=cfg["num_workers"], random_state=cfg["seed"])
+        gamma = 0.1
+        subsample = 0.7
+        colsample_bytree = 0.7
+        model = xgb.XGBRegressor(n_estimators=1000, learning_rate=learning_rate, max_depth=5, gamma=gamma, subsample=subsample, 
+                                 colsample_bytree=colsample_bytree, n_jobs=cfg["num_workers"], random_state=cfg["seed"])
         xgb_param = model.get_xgb_params()
         xgb_train = xgb.DMatrix(x[train_indices], label=y[train_indices])
         if cfg["use_nse"]:
-            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], verbose_eval=True,
+            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds_itersearch"], verbose_eval=True,
                            obj=objective_non_sklearn, feval=eval_metric, early_stopping_rounds=50, seed=cfg["seed"])
         else:
             xgb_param['objective'] = objective
-            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], verbose_eval=True,
+            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds_itersearch"], verbose_eval=True,
                                 metrics=eval_metric, early_stopping_rounds=50, seed=cfg["seed"])
         best_n_estimators = cv_results.shape[0]
         print(cv_results.tail())
         print(f"Best n_estimators: {best_n_estimators}")
 
         # Search tree parameters
-        model = xgb.XGBRegressor(n_estimators=best_n_estimators, learning_rate=learning_rate, gamma=0, subsample=0.7, 
-                                 colsample_bylevel=0.8, objective=objective, n_jobs=1, random_state=cfg["seed"])
+        model = xgb.XGBRegressor(n_estimators=best_n_estimators, learning_rate=learning_rate, gamma=gamma, subsample=subsample, 
+                                 colsample_bytree=colsample_bytree, objective=objective, n_jobs=1, random_state=cfg["seed"])
         model = model_selection.RandomizedSearchCV(model, cfg["tree_param_dist"], n_iter=cfg["tree_n_iter"], cv=cfg["n_folds"], return_train_score=True, 
                                                    scoring=scoring, n_jobs=cfg["num_workers"], refit=False, random_state=cfg["seed"], verbose=5)
         model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric=eval_metric, verbose=False)
@@ -318,8 +322,8 @@ def train(cfg):
         # Search for gamma
         for k,v in best_params.items():
             cfg["gamma_param_dist"][k] = [v]
-        model = xgb.XGBRegressor(n_estimators=best_n_estimators, learning_rate=learning_rate, subsample=0.7, 
-                                 colsample_bylevel=0.8, objective=objective, n_jobs=1, random_state=cfg["seed"])
+        model = xgb.XGBRegressor(n_estimators=best_n_estimators, learning_rate=learning_rate, subsample=subsample, 
+                                 colsample_bytree=colsample_bytree, objective=objective, n_jobs=1, random_state=cfg["seed"])
         model = model_selection.RandomizedSearchCV(model, cfg["gamma_param_dist"], n_iter=cfg["gamma_n_iter"], cv=cfg["n_folds"], return_train_score=True, 
                                                    scoring=scoring, n_jobs=cfg["num_workers"], refit=False, random_state=cfg["seed"], verbose=5)
         model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric=eval_metric, verbose=False)
@@ -352,19 +356,19 @@ def train(cfg):
 
         # Lower learning rate, find n_estimators
         # we can't afford too high n_estimators for large datasets, so we trade off with lr.
-        learning_rate = 0.05 if len(basins) < 100 else 0.1
-        n_estimators = 100000 if len(basins) < 100 else (10000 if len(basins) < 300 else 1000)
+        learning_rate = 0.03 if len(x) < 500_000 else (0.08 if len(x) < 1_000_000 else 0.1)
+        n_estimators = 100_000 if len(x) < 500_000 else (10000 if len(x) < 1_000_000 else 5_000)
         model = xgb.XGBRegressor(n_estimators=n_estimators, learning_rate=learning_rate, n_jobs=cfg["num_workers"], random_state=cfg["seed"])
         xgb_param = model.get_xgb_params()
         for k,v in best_params.items():
             xgb_param[k] = v
         xgb_train = xgb.DMatrix(x[train_indices], label=y[train_indices])
         if cfg["use_nse"]:
-            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], 
+            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds_itersearch"], 
                                 verbose_eval=True, obj=objective_non_sklearn, feval=eval_metric, early_stopping_rounds=100, seed=cfg["seed"])
         else:
             xgb_param['objective'] = objective
-            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds"], 
+            cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds_itersearch"], 
                                 verbose_eval=True, metrics=eval_metric, early_stopping_rounds=100, seed=cfg["seed"])
         print(f"Best n_estimators: {cv_results.shape[0]}")
         mean_score = cv_results.iloc[-1]['test-{}-mean'.format('nse' if cfg["use_nse"] else 'rmse')]

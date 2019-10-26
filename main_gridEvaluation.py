@@ -29,10 +29,10 @@ GLOBAL_SETTINGS = {
     'basin_samples_per_grid_cell': 5,
     # the following resource allocations are rough estimates based on a few experiments and might need to be tweaked.
     'ealstm_time': 0.3,  # minutes per year and basin
-    'ealstm_memory': 0.09,  # G per basin
+    'ealstm_memory': 0.08,  # G per basin
     'xgb_time': 0.3,  # minutes per year and basin
-    'xgb_time_paramsearch': 6, # minutes per basin
-    'xgb_memory': {53: "20G", 265: "80G", 531: "125G"},
+    'xgb_time_paramsearch': 7, # minutes per basin
+    'xgb_memory': {53: {3: "20G", 6: "20G", 9: "20G"}, 265: {3: "60G", 6: "125G", 9: "250G"}, 531: {3: "80G", 6: "125G", 9: "250G"}},
     
     'seeds': [111, 222, 333, 444, 555, 666, 777, 888],
     
@@ -162,7 +162,7 @@ if __name__ == "__main__":
             ealstm_mem = int(cfg["ealstm_memory"] * len(basin_sample))
             xgb_time = int(cfg["xgb_time"] * len(basin_sample) * n_years)
             xgb_time_paramsearch = int(cfg["xgb_time_paramsearch"] * len(basin_sample))
-            xgb_mem = cfg["xgb_memory"][len(basin_sample)]
+            xgb_mem = cfg["xgb_memory"][len(basin_sample)][n_years]
             
             # Do the XGB parameter search for one seed, then reuse these parameters for all seeds
             param_search_name = f"run_xgb_param_search_{train_start}_{train_end}_basinsample{len(basin_sample)}_{i}_seed111"
