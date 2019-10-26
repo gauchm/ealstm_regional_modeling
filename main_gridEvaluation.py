@@ -30,9 +30,9 @@ GLOBAL_SETTINGS = {
     # the following resource allocations are rough estimates based on a few experiments and might need to be tweaked.
     'ealstm_time': 0.3,  # minutes per year and basin
     'ealstm_memory': 0.08,  # G per basin
-    'xgb_time': 0.3,  # minutes per year and basin
-    'xgb_time_paramsearch': 7, # minutes per basin
-    'xgb_memory': {53: {3: "20G", 6: "20G", 9: "20G"}, 265: {3: "60G", 6: "125G", 9: "250G"}, 531: {3: "80G", 6: "125G", 9: "250G"}},
+    'xgb_time': 0.4,  # minutes per year and basin
+    'xgb_time_paramsearch': {53: "01-00:00", 265: "02-00:00", 531: "03-00:00"},
+    'xgb_memory_paramsearch': {53: {3: "20G", 6: "50G", 9: "100G"}, 265: {3: "80G", 6: "250G", 9: "250G"}, 531: {3: "250G", 6: "250G", 9: "250G"}},
     
     'seeds': [111, 222, 333, 444, 555, 666, 777, 888],
     
@@ -161,7 +161,7 @@ if __name__ == "__main__":
             ealstm_time = int(cfg["ealstm_time"] * len(basin_sample) * n_years)
             ealstm_mem = int(cfg["ealstm_memory"] * len(basin_sample))
             xgb_time = int(cfg["xgb_time"] * len(basin_sample) * n_years)
-            xgb_time_paramsearch = int(cfg["xgb_time_paramsearch"] * len(basin_sample))
+            xgb_time_paramsearch = cfg["xgb_time_paramsearch"][len(basin_sample)]
             xgb_mem = cfg["xgb_memory"][len(basin_sample)][n_years]
             
             # Do the XGB parameter search for one seed, then reuse these parameters for all seeds
@@ -169,7 +169,7 @@ if __name__ == "__main__":
             param_search_model_dir = cfg["run_dir"] / param_search_name
             xgb_options = "--use_nse" if cfg["use_nse"] else ""
             xgb_train_str = xgb_sbatch_template.format(basins=' '.join(basin_sample), seed=cfg["seeds"][0], train_start=train_start, train_end=train_end, 
-                                                       options=xgb_options, time=f"00-00:{xgb_time_paramsearch}", memory=xgb_mem, run_name=param_search_name,
+                                                       options=xgb_options, time=xgb_time_paramsearch, memory=xgb_mem, run_name=param_search_name,
                                                        camels_root=cfg["camels_root"], num_workers=cfg["num_workers_xgb"], run_dir_base=cfg["run_name"])
             
             with open(cfg["run_dir"] / f"{param_search_model_dir}.sbatch", "w") as f:

@@ -43,7 +43,7 @@ GLOBAL_SETTINGS = {
     'tree_n_iter': 100,
     
     'gamma_param_dist': { 'gamma': sp.stats.uniform(0, 5) },
-    'gamma_n_iter': 20,
+    'gamma_n_iter': 32,
     
     'subsample_param_dist': {
         'subsample': sp.stats.uniform(0.5, 0.5),
@@ -291,21 +291,23 @@ def train(cfg):
 
     if cfg["model_dir"] is None:
         # Find optimal number of iterations
-        learning_rate = 0.3
+        learning_rate = 0.15 if len(x) < 200_000 else 0.3
+        n_estimators = 5_000 if len(x) < 200_000 else (2_000 if len(x) < 500_000 else 1_000)
+        early_stopping_rounds = 200 if len(x) < 200_000 else 50
         gamma = 0.1
         subsample = 0.7
         colsample_bytree = 0.7
-        model = xgb.XGBRegressor(n_estimators=1000, learning_rate=learning_rate, max_depth=5, gamma=gamma, subsample=subsample, 
+        model = xgb.XGBRegressor(n_estimators=n_estimators, learning_rate=learning_rate, max_depth=5, gamma=gamma, subsample=subsample, 
                                  colsample_bytree=colsample_bytree, n_jobs=cfg["num_workers"], random_state=cfg["seed"])
         xgb_param = model.get_xgb_params()
         xgb_train = xgb.DMatrix(x[train_indices], label=y[train_indices])
         if cfg["use_nse"]:
             cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds_itersearch"], verbose_eval=True,
-                           obj=objective_non_sklearn, feval=eval_metric, early_stopping_rounds=50, seed=cfg["seed"])
+                           obj=objective_non_sklearn, feval=eval_metric, early_stopping_rounds=early_stopping_rounds, seed=cfg["seed"])
         else:
             xgb_param['objective'] = objective
             cv_results = xgb.cv(xgb_param, xgb_train, num_boost_round=model.get_params()['n_estimators'], nfold=cfg["n_folds_itersearch"], verbose_eval=True,
-                                metrics=eval_metric, early_stopping_rounds=50, seed=cfg["seed"])
+                                metrics=eval_metric, early_stopping_rounds=early_stopping_rounds, seed=cfg["seed"])
         best_n_estimators = cv_results.shape[0]
         print(cv_results.tail())
         print(f"Best n_estimators: {best_n_estimators}")
