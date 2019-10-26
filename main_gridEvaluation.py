@@ -32,7 +32,7 @@ GLOBAL_SETTINGS = {
     'ealstm_memory': 0.08,  # G per basin
     'xgb_time': 0.4,  # minutes per year and basin
     'xgb_time_paramsearch': {53: "01-00:00", 265: "02-00:00", 531: "03-00:00"},
-    'xgb_memory_paramsearch': {53: {3: "20G", 6: "50G", 9: "100G"}, 265: {3: "80G", 6: "250G", 9: "250G"}, 531: {3: "250G", 6: "250G", 9: "250G"}},
+    'xgb_memory': {53: {3: "20G", 6: "50G", 9: "100G"}, 265: {3: "80G", 6: "250G", 9: "250G"}, 531: {3: "250G", 6: "250G", 9: "250G"}},
     
     'seeds': [111, 222, 333, 444, 555, 666, 777, 888],
     
