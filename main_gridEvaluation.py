@@ -37,7 +37,7 @@ GLOBAL_SETTINGS = {
     'ealstm_time': 0.3,  # minutes per year and basin
     'ealstm_memory': 0.1,  # G per basin
     'xgb_time': 0.3,  # minutes per year and basin
-    'xgb_memory': 0.1, # G per basin
+    'xgb_memory': 0.23, # G per basin
     'xgb_time_paramsearch': "03-00:00",
     'xgb_memory_paramsearch': "60G",
     
