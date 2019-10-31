@@ -38,7 +38,7 @@ GLOBAL_SETTINGS = {
     'ealstm_memory': 0.1,  # G per basin
     'xgb_time': 0.3,  # minutes per year and basin
     'xgb_memory': 0.1, # G per basin
-    'xgb_time_paramsearch': "01-00:00",
+    'xgb_time_paramsearch': "03-00:00",
     'xgb_memory_paramsearch': "60G",
     
     'seeds': [111, 222, 333, 444, 555, 666, 777, 888],
