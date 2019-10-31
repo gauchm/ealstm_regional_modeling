@@ -29,10 +29,10 @@ GLOBAL_SETTINGS = {
     'basin_samples_per_grid_cell': 5,
     # the following resource allocations are rough estimates based on a few experiments and might need to be tweaked.
     'ealstm_time': 0.3,  # minutes per year and basin
-    'ealstm_memory': 0.08,  # G per basin
+    'ealstm_memory': 0.1,  # G per basin
     'xgb_time': 0.4,  # minutes per year and basin
-    'xgb_time_paramsearch': {53: "01-00:00", 265: "02-00:00", 531: "03-00:00"},
-    'xgb_memory': {53: {3: "20G", 6: "50G", 9: "100G"}, 265: {3: "80G", 6: "250G", 9: "250G"}, 531: {3: "250G", 6: "250G", 9: "250G"}},
+    'xgb_time_paramsearch': {53: "02-00:00", 265: "04-00:00", 531: "05-00:00"},
+    'xgb_memory': {53: {3: "20G", 6: "50G", 9: "100G"}, 265: {3: "80G", 6: "250G", 9: "250G"}, 531: {3: "250G", 6: "400G", 9: "400G"}},
     
     'seeds': [111, 222, 333, 444, 555, 666, 777, 888],
     
