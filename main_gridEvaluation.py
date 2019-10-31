@@ -27,12 +27,19 @@ GLOBAL_SETTINGS = {
     'train_ranges': {9: ('01101999', '30092008'), 6: ('01101999', '30092005'), 3: ('01101999', '30092002')},
     'n_basins': [531, 265, 53],
     'basin_samples_per_grid_cell': 5,
+    
+    # These settings determine for which configuration the XGBoost parameter search is carried out. 
+    # All other configurations will use the parameters found here.
+    'xgb_param_search_range': ('01101999', '30092005'),
+    'xgb_param_search_basins': 53,
+    
     # the following resource allocations are rough estimates based on a few experiments and might need to be tweaked.
     'ealstm_time': 0.3,  # minutes per year and basin
     'ealstm_memory': 0.1,  # G per basin
-    'xgb_time': 0.4,  # minutes per year and basin
-    'xgb_time_paramsearch': {53: "02-00:00", 265: "04-00:00", 531: "05-00:00"},
-    'xgb_memory': {53: {3: "20G", 6: "50G", 9: "100G"}, 265: {3: "80G", 6: "250G", 9: "250G"}, 531: {3: "250G", 6: "400G", 9: "400G"}},
+    'xgb_time': 0.3,  # minutes per year and basin
+    'xgb_memory': 0.1, # G per basin
+    'xgb_time_paramsearch': "01-00:00",
+    'xgb_memory_paramsearch': "60G",
     
     'seeds': [111, 222, 333, 444, 555, 666, 777, 888],
     
@@ -49,6 +56,8 @@ ealstm_sbatch_template = \
 #SBATCH --time={time}        # time (DD-HH:MM)
 #SBATCH --output={run_dir_base}/{run_name}-%j.out
 #SBATCH --error={run_dir_base}/{run_name}-%j.out
+#SBATCH --mail-type=FAIL,TIME_LIMIT
+#SBATCH --mail-user={user}
 set -e
 source /home/mgauch/.bashrc
 conda activate ealstm
@@ -68,14 +77,16 @@ xgb_sbatch_template = \
 #SBATCH --time={time}        # time (DD-HH:MM)
 #SBATCH --output={run_dir_base}/{run_name}-%j.out
 #SBATCH --error={run_dir_base}/{run_name}-%j.out
+#SBATCH --mail-type=FAIL,TIME_LIMIT
+#SBATCH --mail-user={user}
 set -e
 source /home/mgauch/.bashrc
 conda activate ealstm
 
 date
-python main_xgboost_limitedData.py train --camels_root {camels_root} --seed {seed} --basins {basins} --num_workers {num_workers} --train_start {train_start} --train_end {train_end} --run_dir_base {run_dir_base} --run_name {run_name} {options}
+python main_xgboost.py train --camels_root {camels_root} --seed {seed} --basins {basins} --num_workers {num_workers} --train_start {train_start} --train_end {train_end} --run_dir_base {run_dir_base} --run_name {run_name} {options}
 date
-python main_xgboost_limitedData.py evaluate --camels_root {camels_root} --seed {seed} --run_dir {run_dir_base}/{run_name}
+python main_xgboost.py evaluate --camels_root {camels_root} --seed {seed} --run_dir {run_dir_base}/{run_name}
 date
 """
 
@@ -91,7 +102,8 @@ def get_args() -> Dict:
     parser.add_argument('--camels_root', type=str, help="Root directory of CAMELS data set")
     parser.add_argument('--num_workers_ealstm', type=int, default=12, help="Number of parallel threads for EALSTM training")
     parser.add_argument('--num_workers_xgb', type=int, default=20, help="Number of parallel threads for XGBoost training")
-    parser.add_argument('--use_nse', action='store_true', help="If provided, uses NSE as loss/objective.")
+    parser.add_argument('--use_mse', action='store_true', help="If provided, uses MSE as loss/objective.")
+    parser.add_argument('--user', type=str, help="Email address for failed job notifications.")
     
     cfg = vars(parser.parse_args())
     cfg.update(GLOBAL_SETTINGS)
@@ -123,6 +135,8 @@ def _setup_run(cfg: Dict) -> Dict:
         raise RuntimeError('There is already a folder at {}'.format(cfg["run_dir"]))
     else:
         cfg["run_dir"].mkdir(parents=True)
+        
+    print(cfg["run_dir"])
 
     # dump a copy of cfg to run directory
     with (cfg["run_dir"] / 'cfg.json').open('w') as fp:
@@ -154,44 +168,47 @@ if __name__ == "__main__":
             basin_samples.append(np.random.choice(basins, size=n_basins, replace=False))
             if n_basins == 531:
                 break
-                
+      
+    # Do the XGB parameter search for one configuration, then reuse these parameters for all others
+    train_start = cfg["xgb_param_search_range"][0]
+    train_end = cfg["xgb_param_search_range"][1]
+    basin_sample_id, basin_sample = [(i, b) for i, b in enumerate(basin_samples) if len(b) == cfg["xgb_param_search_basins"]][0]
+    param_search_name = f"run_xgb_param_search_{train_start}_{train_end}_basinsample{len(basin_sample)}_{basin_sample_id}_seed111"
+    param_search_model_dir = cfg["run_dir"] / param_search_name
+    xgb_options = "--use_mse" if cfg["use_mse"] else ""
+    xgb_param_search_str = xgb_sbatch_template.format(basins=' '.join(basin_sample), seed=111, train_start=train_start, train_end=train_end, 
+                                                      options=xgb_options, time=cfg["xgb_time_paramsearch"], memory=cfg["xgb_memory_paramsearch"],
+                                                      run_name=param_search_name, camels_root=cfg["camels_root"], num_workers=cfg["num_workers_xgb"], 
+                                                      run_dir_base=cfg["run_name"], user=cfg["user"])
+        
+    with open(f"{param_search_model_dir}.sbatch", "w") as f:
+        f.write(xgb_param_search_str)
+    
     for n_years, train_range in cfg["train_ranges"].items():
         train_start, train_end = train_range
         for i, basin_sample in enumerate(basin_samples):
             ealstm_time = int(cfg["ealstm_time"] * len(basin_sample) * n_years)
             ealstm_mem = int(cfg["ealstm_memory"] * len(basin_sample))
             xgb_time = int(cfg["xgb_time"] * len(basin_sample) * n_years)
-            xgb_time_paramsearch = cfg["xgb_time_paramsearch"][len(basin_sample)]
-            xgb_mem = cfg["xgb_memory"][len(basin_sample)][n_years]
+            xgb_mem = int(cfg["xgb_memory"] * len(basin_sample))
+            xgb_options = "--use_mse" if cfg["use_mse"] else ""
             
-            # Do the XGB parameter search for one seed, then reuse these parameters for all seeds
-            param_search_name = f"run_xgb_param_search_{train_start}_{train_end}_basinsample{len(basin_sample)}_{i}_seed111"
-            param_search_model_dir = cfg["run_dir"] / param_search_name
-            xgb_options = "--use_nse" if cfg["use_nse"] else ""
-            xgb_train_str = xgb_sbatch_template.format(basins=' '.join(basin_sample), seed=cfg["seeds"][0], train_start=train_start, train_end=train_end, 
-                                                       options=xgb_options, time=xgb_time_paramsearch, memory=xgb_mem, run_name=param_search_name,
-                                                       camels_root=cfg["camels_root"], num_workers=cfg["num_workers_xgb"], run_dir_base=cfg["run_name"])
-            
-            with open(cfg["run_dir"] / f"{param_search_model_dir}.sbatch", "w") as f:
-                f.write(xgb_train_str)
-            
-            # Training
             for seed in cfg["seeds"]:
                 xgb_run_name = f"run_xgb_train_{train_start}_{train_end}_basinsample{len(basin_sample)}_{i}_seed{seed}"
-                if seed != cfg["seeds"][0]:
-                    xgb_options = "--model_dir {} {}".format(param_search_model_dir, "--use_nse" if cfg["use_nse"] else "")
-                    with open(cfg["run_dir"] / f"run_xgb_train_{train_start}_{train_end}_basinsample{len(basin_sample)}_{i}_seed{seed}.sbatch", "w") as f:
-                        xgb_train_str = xgb_sbatch_template.format(basins=' '.join(basin_sample), seed=seed, train_start=train_start, train_end=train_end, 
-                                                                   options=xgb_options, time=f"00-00:{xgb_time}", memory=xgb_mem, run_name=xgb_run_name,
-                                                                   camels_root=cfg["camels_root"], num_workers=cfg["num_workers_xgb"], run_dir_base=cfg["run_name"])
-                        f.write(xgb_train_str)
+                xgb_options = "--model_dir {} {}".format(param_search_model_dir, "--use_mse" if cfg["use_mse"] else "")
+                with open(cfg["run_dir"] / f"run_xgb_train_{train_start}_{train_end}_basinsample{len(basin_sample)}_{i}_seed{seed}.sbatch", "w") as f:
+                    xgb_train_str = xgb_sbatch_template.format(basins=' '.join(basin_sample), seed=seed, train_start=train_start, train_end=train_end, 
+                                                               options=xgb_options, time=f"00-00:{xgb_time}", memory=f"{xgb_mem}G", run_name=xgb_run_name,
+                                                               camels_root=cfg["camels_root"], num_workers=cfg["num_workers_xgb"], run_dir_base=cfg["run_name"],
+                                                               user=cfg["user"])
+                    f.write(xgb_train_str)
                         
                 ealstm_run_name = f"run_ealstm_train_{train_start}_{train_end}_basinsample{len(basin_sample)}_{i}_seed{seed}"
-                ealstm_options = "--use_mse True" if not cfg["use_nse"] else ""
+                ealstm_options = "--use_mse True" if cfg["use_mse"] else ""
                 with open(cfg["run_dir"] / f"run_ealstm_train_{train_start}_{train_end}_basinsample{len(basin_sample)}_{i}_seed{seed}.sbatch", "w") as f:
                     ealstm_train_str = ealstm_sbatch_template.format(basins=' '.join(basin_sample), seed=seed, train_start=train_start, train_end=train_end,
                                                                      time=f"00-00:{ealstm_time}", memory=f"{ealstm_mem}G", camels_root=cfg["camels_root"], 
-                                                                     run_name=ealstm_run_name, num_workers=cfg["num_workers_ealstm"], run_dir_base=cfg["run_name"], 
-                                                                     options=ealstm_options)
+                                                                     run_name=ealstm_run_name, num_workers=cfg["num_workers_ealstm"], 
+                                                                     run_dir_base=cfg["run_name"], options=ealstm_options, user=cfg["user"])
                     f.write(ealstm_train_str)
                     
