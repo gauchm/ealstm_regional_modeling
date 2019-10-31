@@ -61,7 +61,7 @@ GLOBAL_SETTINGS = {
     },
     'reg_search_n_iter': 100,
     
-    'seq_length': 30,
+    'seq_length': 270,
     'val_start': pd.to_datetime('01101989', format='%d%m%Y'),
     'val_end': pd.to_datetime('30091999', format='%d%m%Y')
 }    

@@ -104,6 +104,8 @@ def get_args() -> Dict:
     parser.add_argument('--num_workers_xgb', type=int, default=20, help="Number of parallel threads for XGBoost training")
     parser.add_argument('--use_mse', action='store_true', help="If provided, uses MSE as loss/objective.")
     parser.add_argument('--user', type=str, help="Email address for failed job notifications.")
+    parser.add_argument('--use_params', type=str, required=False, 
+                        help="If provided, will not perform parameter search but use the parameters from the model.pkl in this path instead.")
     
     cfg = vars(parser.parse_args())
     cfg.update(GLOBAL_SETTINGS)
@@ -173,17 +175,20 @@ if __name__ == "__main__":
     train_start = cfg["xgb_param_search_range"][0]
     train_end = cfg["xgb_param_search_range"][1]
     basin_sample_id, basin_sample = [(i, b) for i, b in enumerate(basin_samples) if len(b) == cfg["xgb_param_search_basins"]][0]
-    param_search_name = f"run_xgb_param_search_{train_start}_{train_end}_basinsample{len(basin_sample)}_{basin_sample_id}_seed111"
-    param_search_model_dir = cfg["run_dir"] / param_search_name
-    xgb_options = "--use_mse" if cfg["use_mse"] else ""
-    xgb_param_search_str = xgb_sbatch_template.format(basins=' '.join(basin_sample), seed=111, train_start=train_start, train_end=train_end, 
-                                                      options=xgb_options, time=cfg["xgb_time_paramsearch"], memory=cfg["xgb_memory_paramsearch"],
-                                                      run_name=param_search_name, camels_root=cfg["camels_root"], num_workers=cfg["num_workers_xgb"], 
-                                                      run_dir_base=cfg["run_name"], user=cfg["user"])
-        
-    with open(f"{param_search_model_dir}.sbatch", "w") as f:
-        f.write(xgb_param_search_str)
     
+    if cfg["use_params"] is None:
+        param_search_name = f"run_xgb_param_search_{train_start}_{train_end}_basinsample{len(basin_sample)}_{basin_sample_id}_seed111"
+        param_search_model_dir = cfg["run_dir"] / param_search_name
+        xgb_options = "--use_mse" if cfg["use_mse"] else ""
+        xgb_param_search_str = xgb_sbatch_template.format(basins=' '.join(basin_sample), seed=111, train_start=train_start, train_end=train_end, 
+                                                          options=xgb_options, time=cfg["xgb_time_paramsearch"], memory=cfg["xgb_memory_paramsearch"],
+                                                          run_name=param_search_name, camels_root=cfg["camels_root"], num_workers=cfg["num_workers_xgb"], 
+                                                          run_dir_base=cfg["run_name"], user=cfg["user"])
+
+        with open(f"{param_search_model_dir}.sbatch", "w") as f:
+            f.write(xgb_param_search_str)
+    else:
+        param_search_model_dir = cfg["use_params"]
     for n_years, train_range in cfg["train_ranges"].items():
         train_start, train_end = train_range
         for i, basin_sample in enumerate(basin_samples):
