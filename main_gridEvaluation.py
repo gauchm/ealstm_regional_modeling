@@ -25,7 +25,7 @@ from papercode.utils import get_basin_list
 GLOBAL_SETTINGS = {
     # parameters for RandomSearchCVs:
     'train_ranges': {9: ('01101999', '30092008'), 6: ('01101999', '30092005'), 3: ('01101999', '30092002')},
-    'n_basins': [531, 265, 53],
+    'n_basins': [531, 265, 53, 26, 13],
     'basin_samples_per_grid_cell': 5,
     
     # These settings determine for which configuration the XGBoost parameter search is carried out. 
@@ -193,7 +193,7 @@ if __name__ == "__main__":
         train_start, train_end = train_range
         for i, basin_sample in enumerate(basin_samples):
             ealstm_time = int(cfg["ealstm_time"] * len(basin_sample) * n_years)
-            ealstm_mem = int(cfg["ealstm_memory"] * len(basin_sample))
+            ealstm_mem = min(int(cfg["ealstm_memory"] * len(basin_sample)), 4)
             xgb_time = int(cfg["xgb_time"] * len(basin_sample) * n_years)
             xgb_mem = int(cfg["xgb_memory"] * len(basin_sample))
             xgb_options = "--use_mse" if cfg["use_mse"] else ""

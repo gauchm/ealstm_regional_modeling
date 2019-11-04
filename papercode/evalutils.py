@@ -102,6 +102,70 @@ def get_run_dirs(root_dir: PosixPath, model: str, loss: str) -> List:
     return run_dirs
 
 
+def get_run_dirs_gridEvaluation(root_dir: PosixPath, model: str, basin_subset: int, training_years: int) -> List:
+    """Get all folders that are trained for a specific training configuration in the grid evaluation 
+    
+    Parameters
+    ----------
+    root_dir : PosixPath
+        Path to the folder containing all model runs.
+    model : str
+        One of ['ealstm', 'xgboost'], defining the model type to find.
+    basin_subset : int
+        Number from 0-10, identifying the random basin subset (5 random subsets of 53 basins, 5 random subsets of 265 basins, or all 531 basins)
+    training_years: int
+        Number of training years used to train the model
+    
+    Returns
+    -------
+    List
+        List of PosixPaths, where each path points to the folder of one model run.
+    
+    Raises
+    ------
+    ValueError
+        If an invalid model type was passed.
+    ValueError
+        If an invalid loss type was passed.
+    RuntimeError
+        If root directory contains no subfolder.
+    """
+    valid_models = ["xgboost", "ealstm"]
+    valid_basin_subsets = list(range(21))
+    valid_training_years = [3, 6, 9]
+    if (not model in valid_models) or (not basin_subset in valid_basin_subsets) or (not training_years in valid_training_years):
+        raise ValueError(f"`model` must be one of {valid_models} and `basin_subset` one of {valid_basin_subsets} and `training_years` one of {valid_training_years}")
+
+    folders = list(root_dir.glob('*/'))
+
+    if len(folders) == 0:
+        raise RuntimeError(f"No subfolders found in {root_dir}")
+
+    run_dirs = []
+    for folder in folders:
+        if folder.is_dir():
+            with open(folder / "cfg.json", "r") as fp:
+                cfg = json.load(fp)
+            
+            folder_properties = folder.name.split('_')
+            if 'param_search' in folder.name:
+                continue
+            if int(folder_properties[-2]) == basin_subset:
+                if (folder_properties[-4] == '30092002' and training_years == 3) or \
+                   (folder_properties[-4] == '30092005' and training_years == 6) or \
+                   (folder_properties[-4] == '30092008' and training_years == 9):
+                    if folder_properties[1] == 'ealstm':
+                        if (model == "ealstm") and (not cfg["concat_static"]) and (not cfg["no_static"]) and (not cfg["use_mse"]):
+                            run_dirs.append(folder)
+                    elif folder_properties[1] == 'xgb':
+                        if (model == "xgboost") and not cfg["use_mse"]:
+                            run_dirs.append(folder)
+                    else:
+                        pass
+
+    return run_dirs
+
+
 def eval_benchmark_models(netcdf_folder: PosixPath, func: Callable) -> dict:
     """Evaluate benchmark models on specific metric function.
     
