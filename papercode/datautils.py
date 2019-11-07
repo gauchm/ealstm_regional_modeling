@@ -404,7 +404,7 @@ def list_grid(grid_root: PosixPath) -> list :
 
     return files
 
-def read_grid(file_path: PosixPath, weight: float) -> pd.DataFrame :
+def read_grid(file_path: PosixPath, weight: float, includeCoord:bool) -> pd.DataFrame :
     """[summary]
 
     Parameters
@@ -420,10 +420,16 @@ def read_grid(file_path: PosixPath, weight: float) -> pd.DataFrame :
     list
         list of gridded squares
     """  
+    x=float(re.findall(r"-?\d+.\d+", file_path.name)[1])
+    y=float(re.findall(r"-?\d+.\d+", file_path.name)[0])
     col_names = ['Year', 'Mnth', 'Day', 'precipitation', 'max_temp', 'min_temp', 'wind_speed']
     df = pd.read_csv(file_path, sep='\s+', header=None, names=col_names)
     df['weight'] = weight
+    if(includeCoord):
+        df['x']=x
+        df['y']=y
     return df
+
 
 def create_shape(shapefile: list, gageid: str,transformer:Transformer) -> Polygon :
     """[summary]
