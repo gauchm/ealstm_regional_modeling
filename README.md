@@ -7,9 +7,9 @@ This repository is based on https://github.com/kratzert/ealstm_regional_modeling
 - `main_gridEvaluation.py` Main python file used to generate bash scripts (more precisely, SLURM submission scripts) that train and evaluate XGBoost and EA-LSTM models on different amounts of training data.
 - `main.py` Main python file used for training and evaluating EA-LSTM models
 - `main_xgboost.py` Main python file used for training and evaluating XGBoost models (including random parameter search)
-- `data/` contains the list of basins (USGS gauge ids) considered in our study
-- `papercode/` contains the entire code (beside the `main*.py` files in the root directory)
-- `notebooks/` contains the notebook that guides through the results of our study (as well as the notebooks from the Kratzert et al. paper).
+- `data/` contains the list of basins (USGS gauge ids) considered in our study, and a shapefile of the continental US, used for plotting.
+- `papercode/` contains the entire code (besides the `main*.py` files in the root directory)
+- `notebooks/` contains the notebook that guides through the results of our study (as well as the notebooks from the original Kratzert et al. paper).
     - `notebooks/performance_gridEvaluation.ipynb`: This notebook evaluates and compares the results of XGBoost and EA-LSTMs trained on different amounts of training data.
     - `notebooks/performance.ipynb`: This notebooks evaluates and compares the LSTM architechtures from Kratzert et al.
     - `notebooks/ranking.ipynb`: This notebooks evaluates feature rankings and model robustness of the LSTM architechtures from Kratzert et al.
@@ -36,7 +36,7 @@ for the cpu-only version. Or run
 ```
 conda env create -f environment_gpu.yml
 ```
-if you have a CUDA capable NVIDIA GPU. This is recommended if you want to train/evaluate the LSTM on you machine but not strictly necessary. 
+if you have a CUDA-capable NVIDIA GPU. This is recommended if you want to train/evaluate the LSTM on your machine but not strictly necessary. 
 
 In addition, you will have to install XGBoost from source (the current version on conda, 0.90, has a bug that prevents training with a custom objective):
 ```
@@ -70,11 +70,11 @@ Next you need the simulations of all benchmark models. These can be downloaded f
 
 ### Optional Downloads
 
-To use our pre-trained models for evaluation or your own experiments, download the model files here:
+To use the original pre-trained models from Kratzert et al. for evaluation or your own experiments, download the model files here:
 
 - [Pre-trained models](http://www.hydroshare.org/resource/83ea5312635e44dc824eeb99eda12f06)
 
-This download also contains the pre-evaluated model simulations of all our models.
+This download also contains the pre-evaluated model simulations of all their models.
 
 ## Run locally
 
@@ -153,6 +153,7 @@ Additionally, the following options can be passed:
 - `--num_workers_xgb` Use this option to determine the number of workers used for EA-LSTM training. Default is 20.
 - `--use_mse` Provide this option if you want to use NSE as objective and loss function in XGBoost and EA-LSTM training.
 - `--user` Use this option to set the email address that SLURM job failure notifications will be sent to.
+- `--use_params` Use this option to reuse XGBoost parameters from the model in the specified directory, rather than performing a parameter search.
 
 The script will generate SLURM submission scripts in a folder `run_grid_ddmm_hhmm/`, which you can either execute as normal bash scripts (note that you will need to make them executable through `chmod +x path/to/script.sbatch`) or submit to a SLURM scheduler via `sbatch path/to/script.sbatch`.
 The following scripts will be generated:
