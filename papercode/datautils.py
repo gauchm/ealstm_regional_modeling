@@ -318,6 +318,30 @@ def load_discharge(camels_root: PosixPath, basin: str, area: int) -> pd.Series:
 
     return df.QObs
 
+
+def get_basins_with_coordinates(basins: pd.DataFrame, xleft: float,xright:float, ytop:float, ybot:float) -> list :
+    """[summary]
+
+    Parameters
+    ----------
+    basins : DataFrame
+        all basins we're interested in
+    xleft,xright,ytop,ybot : float
+        Coordinates we limit the basins by
+
+    Returns
+    -------
+    list
+        A list containing the basins within the box.
+
+    """
+    filtered=basins[(basins['gauge_lat']<ytop)
+                        & (basins['gauge_lat']>ybot)
+                        &(basins['gauge_lon']>xleft) 
+                        & (basins['gauge_lon']<xright)]   
+    return filtered.index.values.tolist()
+
+
 def load_shape(camels_root: PosixPath) -> list :
     """[summary]
 
@@ -431,7 +455,7 @@ def read_grid(file_path: PosixPath, weight: float, includeCoord:bool) -> pd.Data
     return df
 
 
-def create_shape(shapefile: list, gageid: str,transformer:Transformer) -> Polygon :
+def create_shape(shapefile: list, gageid: list,transformer:Transformer) -> Polygon :
     """[summary]
 
     Parameters
@@ -449,19 +473,69 @@ def create_shape(shapefile: list, gageid: str,transformer:Transformer) -> Polygo
     list
         list of gridded squares
     """  
-    list1=[]
+    mydict={}
+    for gage in gageid:
+        mydict[gage]=[]
+    shapedict={}
     for gjson in shapefile:
-        if(gjson["properties"]["GAGEID"]==gageid):
+        if(gjson["properties"]["GAGEID"] in gageid):
             for idx, shape in enumerate(gjson['geometry']['coordinates']):
-                if(len(gjson['geometry']['coordinates'])==1):
+                if(len(gjson['geometry']['coordinates'][0])>1):
                     for idx2, loc in enumerate(shape):
                         gjson['geometry']['coordinates'][idx][idx2]=transform(loc[0],loc[1],transformer)
                 else: 
                     for idx2, loc in enumerate(shape[0]):
                         gjson['geometry']['coordinates'][idx][0][idx2]=transform(loc[0],loc[1],transformer)
-            list1.append(asShape(gjson['geometry']))
-    new_shape=unary_union(list1)
-    return new_shape
+            mydict[gjson["properties"]["GAGEID"]].append(asShape(gjson['geometry']))
+    for gage in gageid:
+        shapedict[gage]=unary_union(mydict[gage])
+    return shapedict
+
+def draw_basins(shapefile: list, attributes: pd.DataFrame, m: folium.folium.Map, param:str)  :
+    """[summary]
+
+    Parameters
+    ----------
+    shapefile
+        list of shapefiles to draw
+    attributes
+        attributes to show as popup
+    m
+        the map to draw on
+    param
+        the parameter used to determine the colors
+
+    """  
+    keys=list(shapefile.keys())
+    filtered=attributes.loc[keys]
+    maximum=filtered[param].max()
+    minimum=filtered[param].min()
+    
+    for basin,shape in shapefile.items():    
+        att=attributes.loc[basin]
+        st=""
+        shade='00'
+        if maximum>minimum:
+            shade=hex(int(255*(att[param]-minimum)/(maximum-minimum)))[2:]
+        if shade =='0':
+            shade='00'
+            
+        color= '#31'+shade+'cc'
+        for index,val in att.iteritems():
+            st+=index
+            st+=": "
+            st+=str(val)
+            st+=" <br> "
+        folium.GeoJson(
+            shape,
+            name=basin,
+            tooltip=st,
+            style_function=lambda feature,color=color: {
+            'fillColor': color,
+            'color' : '#3186cc',
+            'fillOpacity' : 0.5,
+            'weight' : 1
+            }).add_to(m)
 
 def list_overlap(shape:Polygon, CODE_DIR: PosixPath, threshhold: float) -> list :
     """[summary]
@@ -514,9 +588,8 @@ def find_intersect(shape:Polygon, grids: list) -> pd.DataFrame :
         square=Polygon([[lon-SQUARE_DIMENSION, lat-SQUARE_DIMENSION], [lon-SQUARE_DIMENSION, lat+SQUARE_DIMENSION], [lon+SQUARE_DIMENSION, lat+SQUARE_DIMENSION], [lon+SQUARE_DIMENSION, lat-SQUARE_DIMENSION]])
         sect=square.intersection(shape)
         weight=sect.area/area
-        df=read_grid(loc,weight)
+        df=read_grid(loc,weight,False)
         area_list.append(df)
-        print(loc)
     result = pd.concat(area_list)
     result['wmin'] = result['weight']*result['min_temp']
     result['wmax'] = result['weight']*result['max_temp']
