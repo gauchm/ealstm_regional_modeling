@@ -52,11 +52,18 @@ def get_shape_collections(data: Dict):
 
 model_draw_style = {
     'xgboost_MSE': {
-        'ensemble_color': '#ffd300',
-        'single_color': '#ffd300',
+        'ensemble_color': '#e41a1c',
+        'single_color': '#f9a9ab',
         'linestyle': '--',
         'marker': 's',
         'label': 'XGBoost MSE'
+    },
+    'xgboost_NSE': {
+        'ensemble_color': '#e41a1c',
+        'single_color': '#f9a9ab',
+        'linestyle': '-',
+        'marker': 's',
+        'label': 'XGBoost NSE'
     },
     'ealstm_NSE': {
         'ensemble_color': '#1b9e77',
@@ -167,6 +174,10 @@ model_specs = {
         'model': 'xgboost',
         'loss': 'MSELoss'
     },
+    'xgboost_NSE': {
+        'model': 'xgboost',
+        'loss': 'NSELoss'
+    },
     'ealstm_MSE': {
         'model': 'ealstm',
         'loss': 'MSELoss'
@@ -191,6 +202,13 @@ model_specs = {
         'model': 'lstm_no_static',
         'loss': 'NSELoss'
     }
+}
+
+model_specs_gridEvaluation = {
+    'models': [('xgboost', 'XGBoost', '#1b9e77'), ('ealstm', 'EA-LSTM', '#d95f02')],
+    'training_years': [3, 6, 9],
+    'n_basins': [13, 26, 53, 265, 531],
+    'basin_subsets': {531: [0], 265: [1,2,3,4,5], 53: [6,7,8,9,10], 26: [11,12,13,14,15], 13: [16,17,18,19,20]}
 }
 
 attribute_draw_style = {

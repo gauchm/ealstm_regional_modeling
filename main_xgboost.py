@@ -26,7 +26,7 @@ from papercode.datasets import CamelsH5, CamelsTXT
 from papercode.datautils import (add_camels_attributes, load_attributes,
                                  rescale_features)
 from papercode.metrics import calc_nse
-from papercode.nseloss import NSELoss
+from papercode.nseloss import NSELoss, NSEObjective
 from papercode.utils import create_h5_files, get_basin_list
 
 ###########
@@ -35,38 +35,33 @@ from papercode.utils import create_h5_files, get_basin_list
 
 # fixed settings for all experiments
 GLOBAL_SETTINGS = {
-    # XGBoost parameters
-    #'learning_rate': 0.1,
-    'n_estimators': 100,
-    #'colsample_bylevel': 0.9,
-    #'colsample_bytree': 0.9,
-    #'subsample': 0.8,
-    #'gamma': 3,
-    #'max_depth': 5,
-    #'min_child_weight': 4,
-    #'reg_alpha': 20,
-    #'reg_lambda': 0.5,
-    'early_stopping_rounds': 40,
-    'objective': 'reg:squarederror',
+    # parameters for final training:
+    'final_n_estimators': 20_000,
+    'final_learning_rate': 0.08,
+    'final_early_stopping_rounds': 100,
     
     # parameters for RandomSearchCV:
+    'param_search_n_estimators': 100,
+    'param_search_early_stopping_rounds': 50,
+    'n_cv': 3,
     'param_dist': {
-        'learning_rate': [0.25],
+        'learning_rate': [0.25], 
         'gamma': sp.stats.uniform(0, 5),
         'max_depth': sp.stats.randint(2, 8),
-        'min_child_weight': sp.stats.randint(1, 15),
-        'subsample': [0.5],
-        'colsample_bytree': sp.stats.uniform(0.3, 0.7),
-        'colsample_bylevel': sp.stats.uniform(0.3, 0.7),
-        #'reg_alpha': sp.stats.expon(0, 20),
-        #'reg_lambda': sp.stats.expon(0, 20),
+        'min_child_weight': sp.stats.randint(1, 15), 
+        'subsample': [0.9], 
+        'colsample_bytree': sp.stats.uniform(0.4, 0.6), 
+        'colsample_bylevel': sp.stats.uniform(0.4, 0.6),
     },
-    'n_iter': 10000,
-    'n_cv': 2,
+    'param_search_n_iter': 10_000,
     
-    'seq_length': 8,
-    'train_start': pd.to_datetime('01101999', format='%d%m%Y'),
-    'train_end': pd.to_datetime('30092008', format='%d%m%Y'),
+    'reg_param_dist': {
+        'reg_alpha': sp.stats.expon(0,20),
+        'reg_lambda': sp.stats.expon(0,20),
+    },
+    'reg_search_n_iter': 100,
+    
+    'seq_length': 30,
     'val_start': pd.to_datetime('01101989', format='%d%m%Y'),
     'val_end': pd.to_datetime('30091999', format='%d%m%Y')
 }    
@@ -89,6 +84,8 @@ def get_args() -> Dict:
     parser.add_argument('--camels_root', type=str, help="Root directory of CAMELS data set")
     parser.add_argument('--seed', type=int, required=False, help="Random seed")
     parser.add_argument('--run_dir', type=str, help="For evaluation mode. Path to run directory.")
+    parser.add_argument('--run_dir_base', type=str, default="runs", help="For training mode. Path to store run directories in.")
+    parser.add_argument('--run_name', type=str, required=False, help="For training mode. Name of the run.")
     parser.add_argument('--num_workers',
                         type=int,
                         default=1,
@@ -98,10 +95,20 @@ def get_args() -> Dict:
                         default=False,
                         help="If True, trains XGBoost without static features")
     parser.add_argument('--use_mse',
-                        type=bool,
-                        default=True,
-                        help="If True, uses mean squared error as XGBoost objective.")
+                        action='store_true',
+                        help="If provided, uses MSE as XGBoost objective.")
+    parser.add_argument('--model_dir', 
+                        type=str, required=False, 
+                        help="For training mode. If provided, uses XGBoost parameters from this run, else performs a random parameter search.")
+    parser.add_argument('--train_start', type=str, help="Training start date (ddmmyyyy).")
+    parser.add_argument('--train_end', type=str, help="Training end date (ddmmyyyy).")
+    parser.add_argument('--basins', 
+                        nargs='+', default=get_basin_list(),
+                        help='List of basins')
     cfg = vars(parser.parse_args())
+    
+    cfg["train_start"] = pd.to_datetime(cfg["train_start"], format='%d%m%Y')
+    cfg["train_end"] = pd.to_datetime(cfg["train_end"], format='%d%m%Y')
 
     # Validation checks
     if (cfg["mode"] == "train") and (cfg["seed"] is None):
@@ -110,7 +117,7 @@ def get_args() -> Dict:
 
     if (cfg["mode"] in ["evaluate", "eval_robustness"]) and (cfg["run_dir"] is None):
         raise ValueError("In evaluation mode a run directory (--run_dir) has to be specified")
-
+        
     # combine global settings with user config
     cfg.update(GLOBAL_SETTINGS)
 
@@ -123,6 +130,10 @@ def get_args() -> Dict:
     cfg["camels_root"] = Path(cfg["camels_root"])
     if cfg["run_dir"] is not None:
         cfg["run_dir"] = Path(cfg["run_dir"])
+    if cfg["run_dir_base"] is not None:
+        cfg["run_dir_base"] = Path(cfg["run_dir_base"])
+    if cfg["model_dir"] is not None:
+        cfg["model_dir"] = Path(cfg["model_dir"])
     return cfg
 
 
@@ -144,8 +155,13 @@ def _setup_run(cfg: Dict) -> Dict:
     month = f"{now.month}".zfill(2)
     hour = f"{now.hour}".zfill(2)
     minute = f"{now.minute}".zfill(2)
-    run_name = f'run_xgb_{day}{month}_{hour}{minute}_seed{cfg["seed"]}'
-    cfg['run_dir'] = Path(__file__).absolute().parent / "runs" / run_name
+    second = f"{now.second}".zfill(2)
+    cfg["run_starttime"] = f"{now.year}{day}{month}_{hour}{minute}{second}"
+    if cfg["run_name"] is None:
+        run_name = f'run_xgb_{day}{month}_{hour}{minute}_seed{cfg["seed"]}'
+    else:
+        run_name = cfg["run_name"]
+    cfg['run_dir'] = Path(__file__).absolute().parent / cfg["run_dir_base"] / run_name
     if not cfg["run_dir"].is_dir():
         cfg["train_dir"] = cfg["run_dir"] / 'data' / 'train'
         cfg["train_dir"].mkdir(parents=True)
@@ -162,7 +178,7 @@ def _setup_run(cfg: Dict) -> Dict:
                 temp_cfg[key] = str(val)
             elif isinstance(val, pd.Timestamp):
                 temp_cfg[key] = val.strftime(format="%d%m%Y")
-            elif key == 'param_dist':
+            elif 'param_dist' in key:
                 temp_dict = {}
                 for k, v in val.items():
                     if isinstance(v, sp.stats._distn_infrastructure.rv_frozen):
@@ -227,7 +243,7 @@ def train(cfg):
     torch.cuda.manual_seed(cfg["seed"])
     torch.manual_seed(cfg["seed"])
 
-    basins = get_basin_list()
+    basins = cfg["basins"]
 
     # create folder structure for this run
     cfg = _setup_run(cfg)
@@ -242,10 +258,6 @@ def train(cfg):
                   concat_static=False,
                   cache=True,
                   no_static=cfg["no_static"])
-    
-    # define loss function
-    if not cfg["use_mse"]:
-        raise NotImplementedError('NSE for XGBoost is not implemented')
 
     # Create train/val sets
     x = ds.x.reshape(len(ds.x), -1)
@@ -254,6 +266,21 @@ def train(cfg):
         attr_indices = np.searchsorted(ds.df.index, ds.sample_2_basin)
         attributes = ds.df.iloc[attr_indices].values
         x = np.concatenate([x, attributes], axis=1)
+        
+    # define loss function
+    if not cfg["use_mse"]:
+        # slight hack to enable NSE on XGBoost: replace the target with a unique id
+        # so we can figure out the corresponding q_std during the loss calculation.
+        y_actual = y.copy()
+        y = np.arange(len(y))
+        loss = NSEObjective(y, y_actual, ds.q_stds)
+        objective = loss.nse_objective
+        eval_metric = loss.nse_metric
+        scoring = loss.neg_nse_metric_sklearn
+    else:
+        objective = 'reg:squarederror'
+        eval_metric = 'rmse'
+        scoring = 'neg_mean_squared_error'
     
     num_val_samples = int(len(x) * 0.1)
     val_indices = np.random.choice(range(len(x)), size=num_val_samples, replace=False)
@@ -262,32 +289,46 @@ def train(cfg):
     val = [(x[train_indices], y[train_indices]), 
            (x[val_indices], y[val_indices])]
 
-    param_search = len(cfg['param_dist'].keys()) > 0
-    if param_search:
-        if (cfg["n_iter"] * cfg["n_cv"] >= cfg["num_workers"]) or (cfg["num_workers"] == -1):
-            n_jobs_xgb = 1 
-            n_jobs_cv = cfg["num_workers"]
-        else:
-            n_jobs_xgb = 2
-            n_jobs_cv = cfg["num_workers"] // 2
-        model = xgb.XGBRegressor(n_estimators=cfg["n_estimators"], objective=cfg["objective"], n_jobs=n_jobs_xgb, random_state=cfg["seed"])
-        model = model_selection.RandomizedSearchCV(model, cfg["param_dist"], n_iter=cfg["n_iter"], cv=cfg["n_cv"], return_train_score=True, 
-                                                   scoring='neg_mean_squared_error', n_jobs=n_jobs_cv, random_state=cfg["seed"], verbose=5)
-    else:
-        model = xgb.XGBRegressor(n_estimators=cfg["n_estimators"], learning_rate=cfg["learning_rate"], reg_alpha=cfg["reg_alpha"], reg_lambda=cfg["reg_lambda"],
-                                 subsample=cfg["subsample"], colsample_bylevel=cfg["colsample_bylevel"], colsample_bytree=cfg["colsample_bytree"], 
-                                 gamma=cfg["gamma"], max_depth=cfg["max_depth"], min_child_weight=cfg["min_child_weight"], 
-                                 n_jobs=cfg["num_workers"], random_state=cfg["seed"])
+    if cfg["model_dir"] is None:
+        def param_search(param_dist, n_iter):
+            model = xgb.XGBRegressor(n_estimators=cfg["param_search_n_estimators"], objective=objective, n_jobs=1, random_state=cfg["seed"])
+            model = model_selection.RandomizedSearchCV(model, param_dist, n_iter=n_iter, cv=cfg["n_cv"], return_train_score=True, 
+                                                       scoring=scoring, n_jobs=cfg["num_workers"], random_state=cfg["seed"], refit=False, verbose=5)
+            model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric=eval_metric, 
+                      early_stopping_rounds=cfg["param_search_early_stopping_rounds"], verbose=False)
+            return model
         
-    model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric='rmse', 
-              early_stopping_rounds=cfg["early_stopping_rounds"], verbose=not param_search)
-    
-    if param_search:
+        best_params = param_search(cfg["param_dist"], cfg["param_search_n_iter"]).best_params_
+        print(f"Best parameters: {best_params}")
+
+        # Find regularization parameters in separate search
+        for k,v in best_params.items():
+            cfg["reg_param_dist"][k] = [v]
+        model = param_search(cfg["reg_param_dist"], cfg["reg_search_n_iter"])
+        print(f"Best regularization parameters: {model.best_params_}")
+        
         cv_results = pd.DataFrame(model.cv_results_).sort_values(by='mean_test_score', ascending=False)
         print(cv_results.filter(regex='param_|mean_test_score|mean_train_score', axis=1).head())
-        print('Best params: {}'.format(model.best_params_))
         print(cv_results.loc[model.best_index_, ['mean_train_score', 'mean_test_score']])
-
+        
+        xgb_params = model.best_params_
+        
+    else:
+        print('Using model parameters from {}'.format(cfg["model_dir"]))
+        model = pickle.load(open(cfg["model_dir"] / "model.pkl", "rb"))
+        xgb_params = model.get_xgb_params()
+        
+    xgb_params['learning_rate'] = cfg["final_learning_rate"]
+    xgb_params['n_estimators'] = cfg["final_n_estimators"]
+    model = xgb.XGBRegressor()
+    model.set_params(**xgb_params)
+    model.objective = objective
+    model.random_state = cfg["seed"]
+    model.n_jobs = cfg["num_workers"]
+    print(model.get_xgb_params())
+        
+    model.fit(x[train_indices], y[train_indices], eval_set=val, eval_metric=eval_metric, 
+              early_stopping_rounds=cfg["final_early_stopping_rounds"], verbose=True)
     
     model_path = cfg["run_dir"] / "model.pkl"
     pickle.dump(model, open(str(model_path), 'wb'))
@@ -305,7 +346,7 @@ def evaluate(user_cfg: Dict):
     with open(user_cfg["run_dir"] / 'cfg.json', 'r') as fp:
         run_cfg = json.load(fp)
 
-    basins = get_basin_list()
+    basins = run_cfg["basins"]
 
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")
@@ -370,6 +411,7 @@ def evaluate_basin(model: xgb.XGBRegressor, ds_test: CamelsTXT, no_static: bool)
         x = np.concatenate([x, ds_test.attributes.repeat(len(x), 1).numpy()], axis=1)
     
     preds = model.predict(x)
+    preds = rescale_features(preds, variable='output')
     
     # set discharges < 0 to zero
     preds[preds < 0] = 0
@@ -407,7 +449,7 @@ def eval_robustness(user_cfg: Dict):
     if run_cfg["no_static"]:
         raise NotImplementedError("This function only works with static attributes")
 
-    basins = get_basin_list()
+    basins = run_cfg["basins"]
 
     # get attribute means/stds
     db_path = str(user_cfg["run_dir"] / "attributes.db")
