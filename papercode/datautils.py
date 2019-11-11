@@ -488,7 +488,7 @@ def create_shape(shapefile: list, gageid: list,transformer:Transformer) -> Polyg
                         gjson['geometry']['coordinates'][idx][0][idx2]=transform(loc[0],loc[1],transformer)
             mydict[gjson["properties"]["GAGEID"]].append(asShape(gjson['geometry']))
     for gage in gageid:
-        shapedict[gage]=unary_union(mydict[gage])
+        shapedict[gage]=combineBorders(mydict[gage])
     return shapedict
 
 def draw_basins(shapefile: list, attributes: pd.DataFrame, m: folium.folium.Map, param:str)  :
@@ -517,8 +517,8 @@ def draw_basins(shapefile: list, attributes: pd.DataFrame, m: folium.folium.Map,
         shade='00'
         if maximum>minimum:
             shade=hex(int(255*(att[param]-minimum)/(maximum-minimum)))[2:]
-        if shade =='0':
-            shade='00'
+        if len(shade) ==1:
+            shade='0'+shade
             
         color= '#31'+shade+'cc'
         for index,val in att.iteritems():
@@ -594,3 +594,8 @@ def find_intersect(shape:Polygon, grids: list) -> pd.DataFrame :
     result['wmin'] = result['weight']*result['min_temp']
     result['wmax'] = result['weight']*result['max_temp']
     return result
+
+def combineBorders(geoms:list):
+    return unary_union([
+        geom if geom.is_valid else geom.buffer(0) for geom in geoms
+    ])
