@@ -513,7 +513,7 @@ def draw_basins(shapefile: list, attributes: pd.DataFrame, m: folium.folium.Map,
     
     for basin,shape in shapefile.items():    
         att=attributes.loc[basin]
-        st=""
+        st="basin: "+basin +"<br> "
         shade='00'
         if maximum>minimum:
             shade=hex(int(255*(att[param]-minimum)/(maximum-minimum)))[2:]
