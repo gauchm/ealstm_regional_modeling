@@ -193,7 +193,7 @@ if __name__ == "__main__":
         train_start, train_end = train_range
         for i, basin_sample in enumerate(basin_samples):
             ealstm_time = int(cfg["ealstm_time"] * len(basin_sample) * n_years)
-            ealstm_mem = min(int(cfg["ealstm_memory"] * len(basin_sample)), 4)
+            ealstm_mem = max(int(cfg["ealstm_memory"] * len(basin_sample)), 4)
             xgb_time = int(cfg["xgb_time"] * len(basin_sample) * n_years)
             xgb_mem = int(cfg["xgb_memory"] * len(basin_sample))
             xgb_options = "--use_mse" if cfg["use_mse"] else ""
