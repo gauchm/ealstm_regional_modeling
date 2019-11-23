@@ -64,13 +64,25 @@ However, we trained our models with an updated version of the Maurer forcing dat
 
 - [Updated Maurer forcing with daily minimum and maximum temperature](https://www.hydroshare.org/resource/17c896843cf940339c3c3496d0c1c077/)
 
-Download and extract the updated forcing into the `basin_mean_forcing` folder of the CAMELS data set and do not rename it (name should be `maurer_extended`).
+Download and extract the updated forcing into the `basin_mean_forcing` folder of the CAMELS data set and do not rename it (name should be `maurer_extended`). The resulting folder structure should look something like this:
+```
+|-CAMELS
+|---camels_attributes_v2.0
+|---basin_dataset_public_v1p2
+|-----basin_mean_forcing
+|-------maurer_extended
+|---------01
+...
+|-----usgs_streamflow
+|-------01
+...
+```
 
 ### Optional Downloads
 
 The pre-trained XGBoost and EA-LSTM models, the predictions, and the SLURM submission scripts from our study are available for download here:
 
-- [Pre-trained models, predictions, scripts](https://doi.org/10.5281/zenodo.3543549)
+- [Pre-trained models, predictions, scripts](https://doi.org/10.5281/zenodo.3543548)
 
 To download pre-trained models and simulations, and the physically-based benchmark models from the Kratzet et al. paper, use the following links:
 
