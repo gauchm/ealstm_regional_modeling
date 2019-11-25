@@ -153,7 +153,7 @@ class CamelsTXT(Dataset):
         df = load_attributes(self.db_path, [self.basin], drop_lat_lon=True)
 
         # avoid divide by zero
-        self.attribute_stds[np.where(attribute_stds==0)[0]] = 1
+        self.attribute_stds[np.where(self.attribute_stds==0)[0]] = 1
 
         # normalize data
         df = (df - self.attribute_means) / self.attribute_stds
@@ -292,7 +292,7 @@ class CamelsH5(Dataset):
         self.attribute_stds = df.std()
 
         # avoid divide by zero
-        self.attribute_stds[np.where(attribute_stds==0)[0]] = 1
+        self.attribute_stds[np.where(self.attribute_stds==0)[0]] = 1
 
         # normalize data
         df = (df - self.attribute_means) / self.attribute_stds
