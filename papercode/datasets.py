@@ -152,6 +152,9 @@ class CamelsTXT(Dataset):
     def _load_attributes(self) -> torch.Tensor:
         df = load_attributes(self.db_path, [self.basin], drop_lat_lon=True)
 
+        # avoid divide by zero
+        self.attribute_stds[np.where(attribute_stds==0)[0]] = 1
+
         # normalize data
         df = (df - self.attribute_means) / self.attribute_stds
 
@@ -287,6 +290,9 @@ class CamelsH5(Dataset):
         # store means and stds
         self.attribute_means = df.mean()
         self.attribute_stds = df.std()
+
+        # avoid divide by zero
+        self.attribute_stds[np.where(attribute_stds==0)[0]] = 1
 
         # normalize data
         df = (df - self.attribute_means) / self.attribute_stds
