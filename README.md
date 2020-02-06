@@ -102,6 +102,8 @@ conda activate ealstm
 
 ### Training models
 
+To change the input sequence length, change the value of `GLOBAL_SETTINGS["seq_length"]` in `main.py`/`main_xgboost.py`.
+
 #### LSTMs
 To train an LSTM model, run the following line of code from the terminal
 

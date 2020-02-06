@@ -14,6 +14,7 @@ from typing import Dict, Tuple
 import numpy as np
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon
+from matplotlib.pyplot import cm
 
 
 def ecdf(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -28,7 +29,7 @@ def ecdf(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     -------
     x : np.ndarray
         Array containing the sorted metric values
-    y : np.ndarray]
+    y : np.ndarray
         Array containing the sorted cdf values
     """
     xs = np.sort(x)
@@ -205,7 +206,7 @@ model_specs = {
 }
 
 model_specs_gridEvaluation = {
-    'models': [('xgboost', 'XGBoost', '#1b9e77'), ('ealstm', 'EA-LSTM', '#d95f02')],
+    'models': [('xgboost', 'XGBoost', cm.plasma(0)), ('ealstm', 'EA-LSTM', cm.inferno(170))],
     'training_years': [3, 6, 9],
     'n_basins': [13, 26, 53, 265, 531],
     'basin_subsets': {531: [0], 265: [1,2,3,4,5], 53: [6,7,8,9,10], 26: [11,12,13,14,15], 13: [16,17,18,19,20]}
