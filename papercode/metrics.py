@@ -292,3 +292,9 @@ def calc_fdc_flv(obs: np.ndarray, sim: np.ndarray, l: float = 0.7) -> float:
     flv = -1 * (qsl - qol) / (qol + 1e-6)
 
     return flv * 100
+
+
+def calc_log_nse(obs, sim):
+    """Calculates NSE of logarithmic discharge. """
+    eps = np.mean(obs) / 100  # Deal with 0-discharge (10.1016/j.jhydrol.2011.11.055)
+    return calc_nse(np.log(obs + eps), np.log(sim + eps))

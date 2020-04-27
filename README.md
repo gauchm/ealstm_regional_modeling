@@ -80,14 +80,14 @@ Download and extract the updated forcing into the `basin_mean_forcing` folder of
 
 ### Optional Downloads
 
-The pre-trained XGBoost and EA-LSTM models, the predictions, and the SLURM submission scripts from our study are available for download here:
+The pre-trained XGBoost and EA-LSTM models, the predictions, the SLURM submission scripts, and the traditional hydrologic benchmark models for our study are available for download at the following links:
 
 - [Pre-trained models, predictions, scripts](https://doi.org/10.5281/zenodo.3543548)
+- [Traditional hydrologic benchmark models](http://www.hydroshare.org/resource/474ecc37e7db45baa425cdb4fc1b61e1)
 
-To download pre-trained models and simulations, and the physically-based benchmark models from the Kratzet et al. paper, use the following links:
+To download pre-trained models and simulations from the Kratzet et al. paper, use the following link:
 
 - [Original pre-trained models](http://www.hydroshare.org/resource/83ea5312635e44dc824eeb99eda12f06)
-- [Physically-based benchmark models](http://www.hydroshare.org/resource/474ecc37e7db45baa425cdb4fc1b61e1)
 
 
 ## Running locally
