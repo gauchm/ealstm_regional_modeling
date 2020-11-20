@@ -1,6 +1,8 @@
 # The Proper Care and Feeding of CAMELS: How Limited Training Data Affects Streamflow Prediction
 
-This repository accompanies the paper [*The Proper Care and Feeding of CAMELS: How Limited Training Data Affects Streamflow Prediction*](https://arxiv.org/abs/1911.07249) (Martin Gauch, Juliane Mai, and Jimmy Lin, arXiv:1911.07249, 2019).
+This repository accompanies the paper [**The Proper Care and Feeding of CAMELS: How Limited Training Data Affects Streamflow Prediction**](https://www.sciencedirect.com/science/article/pii/S136481522030983X) (Martin Gauch, Juliane Mai, and Jimmy Lin, _Environmental Modelling & Software_, Volume 135, 2021.
+
+([open-access verion on arXiv](https://arxiv.org/abs/1911.07249), originally posted November 2019)
 
 It is built upon the code from https://github.com/kratzert/ealstm_regional_modeling.
 
@@ -212,7 +214,7 @@ If you use any of this code in your experiments, please make sure to cite our pa
 
 ```
 Gauch, M., Mai, J., Lin, J., "The Proper Care and Feeding of CAMELS: 
-How Limited Training Data Affects Streamflow Prediction". arXiv (2019)
+How Limited Training Data Affects Streamflow Prediction". Environmental Modelling & Software, Volume 135, 2021, 104926, ISSN 1364-8152.
 
 Kratzert, F., Klotz, D., Shalev, G., Klambauer, G., Hochreiter, S., Nearing, G., "Benchmarking
 a Catchment-Aware Long Short-Term Memory Network (LSTM) for Large-Scale Hydrological Modeling".
