@@ -15,7 +15,14 @@ from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
+import fiona as fio
+from fiona.crs import from_string
 from numba import njit
+import folium
+from pyproj import CRS, Transformer
+from shapely.geometry import Polygon,asShape
+from shapely.ops import unary_union
+import re
 
 # CAMELS catchment characteristics ignored in this study
 INVALID_ATTR = [
@@ -310,3 +317,280 @@ def load_discharge(camels_root: PosixPath, basin: str, area: int) -> pd.Series:
     df.QObs = 28316846.592 * df.QObs * 86400 / (area * 10**6)
 
     return df.QObs
+
+
+def get_basins_with_coordinates(basins: pd.DataFrame, xleft: float,xright:float, ytop:float, ybot:float) -> list :
+    """[summary]
+
+    Parameters
+    ----------
+    basins : DataFrame
+        all basins we're interested in
+    xleft,xright,ytop,ybot : float
+        Coordinates we limit the basins by
+
+    Returns
+    -------
+    list
+        A list containing the basins within the box.
+
+    """
+    filtered=basins[(basins['gauge_lat']<ytop)
+                        & (basins['gauge_lat']>ybot)
+                        &(basins['gauge_lon']>xleft) 
+                        & (basins['gauge_lon']<xright)]   
+    return filtered.index.values.tolist()
+
+
+def load_shape(camels_root: PosixPath) -> list :
+    """[summary]
+
+    Parameters
+    ----------
+    camels_root : PosixPath
+        Path to the main directory of the CAMELS data set
+
+    Returns
+    -------
+    pd.Series
+        A Series containing the shapefile values.
+
+    Raises
+    ------
+    RuntimeError
+        If no shapefile file was found.
+    """
+    shapefile_path = camels_root / 'basin_dataset_public_v1p2' / 'shapefiles'
+    files = list(shapefile_path.glob('*nhru*.shp'))
+
+    all_list=[]
+    for file_path in files:
+        shape = fio.open(file_path)
+        for basin in shape:
+            all_list.append(basin)
+    return all_list
+
+def reverse(tuples): 
+    """[summary]
+
+    Parameters
+    ----------
+    tuples 
+        Tuple to reverse
+
+    Returns
+    -------
+    tuple
+        The tuple reversed
+    """    
+    new_tup = () 
+    for k in reversed(tuples): 
+        new_tup = new_tup + (k,) 
+    return( new_tup )
+
+
+def transform(val1: float,val2: float,transformer:Transformer) -> list :
+    """[summary]
+
+    Parameters
+    ----------
+    val1,val2 
+        coordinate to transformer
+        
+    transformer
+        crs used to transformer
+
+
+    Returns
+    -------
+    tuple
+        coordinate after applying crs transformation
+    """    
+    return reverse(transformer.transform(val1,val2))
+
+def list_grid(grid_root: PosixPath) -> list :
+    """[summary]
+
+    Parameters
+    ----------
+    grid_root
+        root to look for gridded squares
+
+
+    Returns
+    -------
+    list
+        list of gridded squares
+    """  
+    grid_path = grid_root / 'data' / 'east'
+    files = list(grid_path.glob('data_*'))
+
+
+    return files
+
+def read_grid(file_path: PosixPath, weight: float, includeCoord:bool) -> pd.DataFrame :
+    """[summary]
+
+    Parameters
+    ----------
+    file_path
+        square to read
+    
+    weight
+        associated weight to the square
+
+    Returns
+    -------
+    list
+        list of gridded squares
+    """  
+    x=float(re.findall(r"-?\d+.\d+", file_path.name)[1])
+    y=float(re.findall(r"-?\d+.\d+", file_path.name)[0])
+    col_names = ['Year', 'Mnth', 'Day', 'precipitation', 'max_temp', 'min_temp', 'wind_speed']
+    df = pd.read_csv(file_path, sep='\s+', header=None, names=col_names)
+    df['weight'] = weight
+    if(includeCoord):
+        df['x']=x
+        df['y']=y
+    return df
+
+
+def create_shape(shapefile: list, gageid: list,transformer:Transformer) -> Polygon :
+    """[summary]
+
+    Parameters
+    ----------
+    shapefile
+        list of shapefiles to merge
+    
+    gageid
+        gage id associated basin
+    transformer
+        Transformer used to transform
+
+    Returns
+    -------
+    list
+        list of gridded squares
+    """  
+    mydict={}
+    for gage in gageid:
+        mydict[gage]=[]
+    shapedict={}
+    for gjson in shapefile:
+        if(gjson["properties"]["GAGEID"] in gageid):
+            for idx, shape in enumerate(gjson['geometry']['coordinates']):
+                if(len(gjson['geometry']['coordinates'][0])>1):
+                    for idx2, loc in enumerate(shape):
+                        gjson['geometry']['coordinates'][idx][idx2]=transform(loc[0],loc[1],transformer)
+                else: 
+                    for idx2, loc in enumerate(shape[0]):
+                        gjson['geometry']['coordinates'][idx][0][idx2]=transform(loc[0],loc[1],transformer)
+            mydict[gjson["properties"]["GAGEID"]].append(asShape(gjson['geometry']))
+    for gage in gageid:
+        shapedict[gage]=unary_union(mydict[gage])
+    return shapedict
+
+def draw_basins(shapefile: list, attributes: pd.DataFrame, m: folium.folium.Map, param:str)  :
+    """[summary]
+
+    Parameters
+    ----------
+    shapefile
+        list of shapefiles to draw
+    attributes
+        attributes to show as popup
+    m
+        the map to draw on
+    param
+        the parameter used to determine the colors
+
+    """  
+    keys=list(shapefile.keys())
+    filtered=attributes.loc[keys]
+    maximum=filtered[param].max()
+    minimum=filtered[param].min()
+    
+    for basin,shape in shapefile.items():    
+        att=attributes.loc[basin]
+        st=""
+        shade='00'
+        if maximum>minimum:
+            shade=hex(int(255*(att[param]-minimum)/(maximum-minimum)))[2:]
+        if shade =='0':
+            shade='00'
+            
+        color= '#31'+shade+'cc'
+        for index,val in att.iteritems():
+            st+=index
+            st+=": "
+            st+=str(val)
+            st+=" <br> "
+        folium.GeoJson(
+            shape,
+            name=basin,
+            tooltip=st,
+            style_function=lambda feature,color=color: {
+            'fillColor': color,
+            'color' : '#3186cc',
+            'fillOpacity' : 0.5,
+            'weight' : 1
+            }).add_to(m)
+
+def list_overlap(shape:Polygon, CODE_DIR: PosixPath, threshhold: float) -> list :
+    """[summary]
+
+    Parameters
+    ----------
+    shape
+        basin of interest
+    
+    CODE_DIR
+        directory of gridded data
+    threshhold
+        square length to identify overlaps
+
+    Returns
+    -------
+    list
+        list of overlapping squares
+    """      
+    filterlist=list(filter(lambda x:float(re.findall(r"-?\d+.\d+", x.name)[1])>shape.bounds[0]-threshhold
+       and float(re.findall(r"-?\d+.\d+", x.name)[1])<shape.bounds[2]+threshhold     
+       and float(re.findall(r"-?\d+.\d+", x.name)[0])>shape.bounds[1]-threshhold
+       and float(re.findall(r"-?\d+.\d+", x.name)[0])<shape.bounds[3]+threshhold
+                ,list_grid(CODE_DIR)))
+    return filterlist
+
+def find_intersect(shape:Polygon, grids: list) -> pd.DataFrame :
+    """[summary]
+
+    Parameters
+    ----------
+    shape
+        basin of interest
+    
+    grids
+        square to search for intersection
+
+    Returns
+    -------
+    pd
+        dataframe of each overlapping square with the percentage of area overlapping
+    """      
+    #the dimension of a square, which is 1/16's of a lon/lat
+    SQUARE_DIMENSION=0.0625
+    area=shape.area
+    area_list=[]
+    for loc in grids:
+        lat=float(re.findall(r"-?\d+.\d+", loc.name)[0])
+        lon=float(re.findall(r"-?\d+.\d+", loc.name)[1])
+        square=Polygon([[lon-SQUARE_DIMENSION, lat-SQUARE_DIMENSION], [lon-SQUARE_DIMENSION, lat+SQUARE_DIMENSION], [lon+SQUARE_DIMENSION, lat+SQUARE_DIMENSION], [lon+SQUARE_DIMENSION, lat-SQUARE_DIMENSION]])
+        sect=square.intersection(shape)
+        weight=sect.area/area
+        df=read_grid(loc,weight,False)
+        area_list.append(df)
+    result = pd.concat(area_list)
+    result['wmin'] = result['weight']*result['min_temp']
+    result['wmax'] = result['weight']*result['max_temp']
+    return result
